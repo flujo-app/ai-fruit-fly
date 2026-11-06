@@ -223,7 +223,10 @@ export function judge(code) {
     const heightCredit = tallOk ? 1 : Math.max(0, 1 - Math.min(Math.abs(M.h - 1.8), Math.abs(M.h - 3.5)) / 1.5) * 0.7;
     const baseCredit = baseOk ? 1 : cyl ? Math.min(0.7, mp.radiusBottom / 0.3 * 0.7) : 0;
     // a döner is clearly taller than it is wide (not a lampshade), but not a pole either
-    const slim = M.h / M.w, slimOk = slim >= 1.3 && slim <= 2.5, slimCredit = slimOk ? 1 : 0.8 * Math.min(slim / 1.3, 2.5 / slim);
+    // (partial credit also counts a narrower bottom, so a too-wide cone can slim down one step at a time)
+    const slim = M.h / M.w, slimOk = slim >= 1.3 && slim <= 2.5;
+    const softSlim = cyl ? M.h / (1.5 * mp.radiusTop + 0.5 * mp.radiusBottom) : slim;
+    const slimCredit = slimOk ? 1 : 0.8 * Math.min(1, softSlim / 1.3, 2.5 / slim);
     // a döner's height matters most: it should pay off before the spit and bread are adjusted to it
     part.shape = (cyl ? (round ? 0.15 : 0.05) : 0) + (wider ? 0.1 : 0) + 0.25 * heightCredit + 0.2 * slimCredit + 0.1 * baseCredit + (biggest ? 0.2 : 0);
     why.shape = part.shape > 0.99 ? 'A proper döner cone.' : !cyl ? `That is a ${meat.geometry.type === 'BoxGeometry' ? 'box' : 'ball'}, not a döner.` : !round ? 'A döner is round, not pointy.' : !wider ? 'The cone is not wider at the top.' : !baseOk ? 'The cone ends in a needle point.' : !tallOk ? 'Wrong height for a döner.' : !slimOk ? (slim < 1.3 ? 'Too wide: that is a lampshade, not a döner.' : 'Too skinny: that is a pole, not a döner.') : 'Something else is bigger than the döner.';
@@ -240,10 +243,6 @@ export function judge(code) {
       const plain = glows(s.material.emissive) ? 0 : 1;   // a spit is plain metal, it does not glow
       return { tall, thin, centred, through, plain, score: 0.15 * tall + 0.15 * thin + 0.25 * centred * thin + 0.3 * through * thin + 0.15 * plain };
     };
-    const spit = rods.map(spitParts).sort((a, b) => b.score - a.score)[0];
-    part.spit = spit ? spit.score : 0;
-    why.spit = part.spit > 0.99 ? 'Spit is in place.' : !spit ? 'Nothing holds the meat up.' : spit.thin < 1 ? 'That is not a spit, it is a pillar.'
-      : spit.tall < 1 ? 'The spit is too short.' : spit.centred < 1 ? 'The spit misses the middle of the meat.' : spit.through < 1 ? 'The spit does not go through the meat.' : 'A glowing spit? It should be plain metal.';
     // 5. heat: a glowing grill behind the meat, close but not touching, sensibly sized
     // (something as thin as a spit is no grill: one glowing rod cannot be the spit and the grill at once)
     const grills = w.meshes.filter((m) => m !== meat && !shapes.get(m).thin && warmGlow(m.material.emissive));
@@ -259,19 +258,34 @@ export function judge(code) {
       const ball = notBall(g), hot = looksHot(g);
       return { behind, apart, level, wide, tall, near, aligned, ball, hot, score: 0.1 + 0.15 * behind + 0.1 * apart + 0.05 * level + 0.1 * wide + 0.1 * tall + 0.1 * near + 0.1 * aligned + 0.1 * ball + 0.1 * hot };
     };
-    const heat = grills.map(heatParts).sort((a, b) => b.score - a.score)[0];
+    // every object has one job: the spit and the grill are picked together, so one glowing rod in the
+    // middle of the meat cannot collect credit as both
+    let spit = null, heat = null, spitObj = null, grillObj = null, bestSum = -1;
+    for (const s of [null, ...rods]) {
+      const sp = s && spitParts(s);
+      for (const g of [null, ...grills]) {
+        if (s && s === g) continue;
+        const hp = g && heatParts(g), sum = (sp ? sp.score : 0) + (hp ? hp.score : 0);
+        if (sum > bestSum + 1e-9) { bestSum = sum; spit = sp; heat = hp; spitObj = s; grillObj = g; }
+      }
+    }
+    part.spit = spit ? spit.score : 0;
+    why.spit = part.spit > 0.99 ? 'Spit is in place.' : !spit ? 'Nothing holds the meat up.' : spit.thin < 1 ? 'That is not a spit, it is a pillar.'
+      : spit.tall < 1 ? 'The spit is too short.' : spit.centred < 1 ? 'The spit misses the middle of the meat.' : spit.through < 1 ? 'The spit does not go through the meat.' : 'A glowing spit? It should be plain metal.';
     part.heat = heat ? heat.score : 0;
     why.heat = part.heat > 0.99 ? 'Hot grill behind the meat, perfect.' : !heat ? 'Nothing is cooking the meat.'
       : !heat.ball ? 'A glowing ball? That is a light bulb, not a grill.' : !heat.hot ? 'The grill glows pale, like a lamp.'
         : heat.behind < 1 ? 'The grill is not behind the meat.' : !heat.apart ? 'The grill touches the meat.' : heat.wide < 1 || heat.tall < 1 ? 'The grill is too small (or too big).'
           : heat.near < 1 ? 'The grill is too far away.' : heat.level < 1 ? 'The grill is too high or too low.' : 'The grill is off to the side.';
     // 6. bread: a flat round dürüm or a triangle of Fladenbrot, lying on the counter where the slices fall
-    // (glowing bread is not bread: one glowing wheat-coloured thing cannot be the grill and the bread at once)
-    const breads = w.meshes.filter((m) => m !== meat && !shapes.get(m).thin && isBread(m.material.color.hsl()) && !glows(m.material.emissive));
+    // (bread lies flat and does not glow: one wheat-coloured thing cannot be the grill or the spit and the
+    // bread at once)
+    const breads = w.meshes.filter((m) => m !== meat && m !== spitObj && m !== grillObj && !shapes.get(m).thin && isBread(m.material.color.hsl()) && !glows(m.material.emissive) && boxOf(m).h <= boxOf(m).w);
     const breadParts = (b) => {
       const B = boxOf(b), t = w.turn[w.meshes.indexOf(b)];
       const kind = breadKind(b) ? 1 : b.geometry.type === 'CylinderGeometry' ? 0.3 : 0;
-      const flatOk = B.h <= 0.25 ? 1 : B.h <= 0.6 ? 0.4 : 0, sized = B.w >= 1 && B.w <= 3.5 ? 1 : 0;
+      const flatOk = B.h <= 0.25 ? 1 : B.h <= 0.6 ? 0.4 : 0;
+      const sized = B.w < 1 ? 0.5 * B.w : B.w <= 3.5 ? 1 : 0.6 * Math.max(0, 1 - (B.w - 3.5) / 4);
       const below = B.y1 <= M.y0 + 0.15 ? 1 : Math.min(0.8, Math.max(0, (meat.position.y - b.position.y) / (M.h / 2 + B.h / 2)));
       const lift = Math.abs(B.y0 - COUNTER_TOP), onCounter = lift <= 0.12 ? 1 : 0.6 * Math.max(0, 1 - lift / 2);
       const apart = touches(B, M, 0.2) ? 0 : 1;

@@ -58,7 +58,8 @@ rounds after the first perfect döner. In demo mode the page also saves all fly 
 local server (`serve.py`, folder `.state`) every 20 rounds, and `fly-gym.html?demo&resume`
 continues from the last save. That way a long run can be recorded in pieces. A recorded run is in
 `../media/fly-gym-demo.mp4`, and its winning program is in `examples/doener-by-1024-flies.html`
-(add `?side` to that address for a side view).
+(add `?side` to that address for a side view). The winner of the first video, which looked like a
+lampshade on a loaf, is in `examples/lampshade-by-1024-flies.html`.
 
 Here the flies get no ready-made code blocks. They type a three.js program **one token at a time**:
 keywords, names, numbers, colours and symbols. Open <http://127.0.0.1:8765/fly-gym.html> and press
@@ -81,11 +82,12 @@ keywords, names, numbers, colours and symbols. Open <http://127.0.0.1:8765/fly-g
   decision has a 3% chance of being a random token (curiosity). Each lab copies its best flies'
   memories over its weakest ones, and the labs swap their best fly every 2 rounds.
 - **Results** (`node tools/train_gym.mjs 1024 600 islands=8 migrateEvery=2`): random typing
-  averages about 0.7 of 8 and never passes more than 4 tests. Against the final, picky customer,
-  5 of 6 headless runs produced a döner that passes all 8 tests, first in round 244 to 501, and
-  so did all 4 runs with the browser's 8-lab setup. In the browser on an 8-core PC, training runs
-  at about 2 rounds per second. The recorded run had its first perfect döner in round 350, after
-  about 3 minutes. If a run stays stuck, press "New flies". What made it work:
+  averages about 0.7 of 8 and never passes more than 3 tests. Against the current customer, 2 of
+  4 headless runs produced a döner that passes all 8 tests, in rounds 123 and 225. The other two
+  were still stuck after 500 rounds, at 7.5 and 7.8 of 8 (a döner that is still too wide, or a
+  grill that won't move behind the meat). So if a run stays stuck, press "New flies". In the
+  browser on an 8-core PC, training runs at about 2 rounds per second. The recorded run had its
+  first perfect döner in round 219, after 2 minutes 16 seconds. What made it work:
   1. Each fly compares its own attempts: much clearer than one attempt per round.
   2. Only the tokens that differ between the best and worst attempt are rewarded or punished, so good habits aren't worn down.
   3. Smells are about objects instead of line numbers, so inserting a line doesn't scramble the memory.
@@ -111,8 +113,10 @@ tightened step by step, and the flies found a new gap each time:
    tall, with a pale glowing ball as the "grill" (it looked like a light bulb), a bread loaf, and
    a knife that shaved the ball as well as the meat.
 5. Against the new rules, they tried using one thing twice: a glowing, wheat-coloured disc as
-   both the bread and the grill, and a glowing spit that also counted as a bit of grill. Now
-   nothing that glows counts as bread, and nothing as thin as a spit counts as a grill.
+   both the bread and the grill, a glowing rod in the middle as both the spit and the grill, and
+   a thick wheat-coloured spit that also counted a little as bread. Now every object has exactly
+   one job (the customer picks the spit and the grill together), nothing that glows or stands
+   upright counts as bread, and nothing as thin as a spit counts as a grill.
 
 The customer now checks that:
 - the döner stands in the middle, is brightly lit **on the side facing the customer** (a simple
