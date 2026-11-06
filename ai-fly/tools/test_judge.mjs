@@ -4,7 +4,7 @@
 import { judge } from '../js/gym/judge.js';
 import { writeProgram } from '../js/gym/grammar.js';
 
-const proper = `scene.add(new THREE.DirectionalLight(0xffffff, 2));
+const proper = `scene.add(new THREE.AmbientLight(0xffffff, 2));
 const m1 = new THREE.Mesh(new THREE.CylinderGeometry(1, 0.5, 2), new THREE.MeshStandardMaterial({ color: 0x8b4513 })); scene.add(m1);
 const m2 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 3), new THREE.MeshStandardMaterial({ color: 0xc0c6cc })); scene.add(m2);
 const m3 = new THREE.Mesh(new THREE.BoxGeometry(1.5, 2, 0.2), new THREE.MeshStandardMaterial({ color: 0x222222, emissive: 0xff5500 })); scene.add(m3);

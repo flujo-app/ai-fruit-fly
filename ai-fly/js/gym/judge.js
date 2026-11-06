@@ -27,8 +27,36 @@ class Mesh { constructor(g, m) { this.isMesh = true; this.geometry = g; this.mat
 class Light { constructor(color = 0xffffff, intensity = 1) { this.isLight = true; this.color = new Color(color); this.intensity = intensity; } }
 const MOCK = {
   BoxGeometry, CylinderGeometry, SphereGeometry, MeshStandardMaterial, Mesh,
-  DirectionalLight: class extends Light {}, AmbientLight: class extends Light {}, PointLight: class extends Light {},
+  // three.js defaults: a directional light shines from straight above, a point light sits at the origin
+  DirectionalLight: class extends Light { constructor(c, i) { super(c, i); this.kind = 'directional'; this.position = new Vec3().set(0, 1, 0); } },
+  AmbientLight: class extends Light { constructor(c, i) { super(c, i); this.kind = 'ambient'; } },
+  PointLight: class extends Light { constructor(c, i) { super(c, i); this.kind = 'point'; this.position = new Vec3(); } },
 };
+
+// How much light reaches the side of the meat that faces the customer (a simple Lambert estimate):
+// ambient light everywhere, other lights only if they shine onto that side and are not inside the meat.
+function frontLight(lights, meat, M) {
+  const p = meat.geometry.parameters;
+  let n = [0, 0, 1];
+  if (meat.geometry.type === 'CylinderGeometry') {
+    const s = (p.radiusBottom - p.radiusTop) / p.height;   // a cone wider at the top faces slightly down
+    const len = Math.hypot(s, 1);
+    n = [0, s / len, 1 / len];
+  }
+  let total = 0;
+  for (const l of lights) {
+    let k = 1;
+    if (l.kind !== 'ambient') {
+      const lp = l.position;
+      const inside = lp.x > M.x0 && lp.x < M.x1 && lp.y > M.y0 && lp.y < M.y1 && lp.z > M.z0 && lp.z < M.z1;
+      const d = l.kind === 'directional' ? [lp.x, lp.y, lp.z] : [lp.x - meat.position.x, lp.y - meat.position.y, lp.z - meat.position.z];
+      const dl = Math.hypot(...d) || 1;
+      k = inside ? 0 : Math.max(0, (n[0] * d[0] + n[1] * d[1] + n[2] * d[2]) / dl);
+    }
+    total += l.intensity * l.color.luminance * k;
+  }
+  return total;
+}
 
 export function runProgram(code) {
   const scene = { children: [], add(o) { if (!this.children.includes(o)) this.children.push(o); return this; } };
@@ -99,10 +127,11 @@ export function judge(code) {
   // (if everything is bread-coloured or glowing, there is simply no meat)
   const meat = solid.find((m) => !warmGlow(m.material.emissive) && !isBread(m.material.color.hsl()));
 
-  const lightTotal = w.lights.reduce((a, l) => a + l.intensity * l.color.luminance, 0);
+  // light that actually falls on the front of the döner (without a döner: all light counts)
+  const lightTotal = meat ? frontLight(w.lights, meat, boxOf(meat)) : w.lights.reduce((a, l) => a + l.intensity * l.color.luminance, 0);
   const lightWarm = w.lights.length > 0 && w.lights.every((l) => l.color.r >= l.color.b);
   const lightPart = Math.min(1, lightTotal / 1.5) * (lightWarm ? 1 : 0.5);
-  const lightWhy = !w.lights.length ? 'Pitch dark.' : lightTotal < 1.5 ? 'Too dark.' : !lightWarm ? 'Cold, blue light.' : 'Nicely lit.';
+  const lightWhy = !w.lights.length ? 'Pitch dark.' : lightTotal < 1.5 ? 'The front of the döner is in the dark.' : !lightWarm ? 'Cold, blue light.' : 'Nicely lit.';
   const brightLight = w.lights.some((l) => l.color.luminance >= 0.6 && l.intensity >= 1);
   if (!meat) {
     part.light = 0.4 * lightPart;
