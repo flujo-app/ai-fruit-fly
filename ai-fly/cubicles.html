@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cubicles</title>
+<link rel="stylesheet" href="css/cubicles.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="splash">
+  <div class="card">
+    <p class="kicker">FLY GYM · OPEN-PLAN EDITION</p>
+    <h1>Cubicles</h1>
+    <p>1,024 fruit flies, each with its own copy of a real fly's learning centre, sit at 1,024 desks and
+      type a three.js döner app one token at a time. You are the supervisor.</p>
+    <ul>
+      <li><b>WASD</b> to walk, <b>Shift</b> to run, the <b>mouse</b> to look around</li>
+      <li>The <b>big screen</b> on the deck shows the live training; the <b>buttons</b> on the console set the speed</li>
+      <li>When a fly writes a perfect döner, follow the <b>path on the floor</b> to it, then press <b>1</b> for a sugar cube or <b>2</b> for a management contract</li>
+      <li><b>R</b> records a video of what you see</li>
+    </ul>
+    <label><input type="checkbox" id="opt-start"> Start training right away (full speed)</label>
+    <label><input type="checkbox" id="opt-record"> Record a video from the start</label>
+    <button id="enter" disabled>Enter the office</button>
+    <p id="splash-status" class="status"></p>
+    <p class="links"><a href="fly-gym.html">Fly Gym</a> · <a href="doener.html">Döner Dev Fly</a> · <a href="index.html">Fly world</a></p>
+  </div>
+</div>
+<script type="module" src="js/cubicles/main.js"></script>
+</body>
+</html>

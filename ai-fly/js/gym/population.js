@@ -43,6 +43,9 @@ export const DEFAULTS = {
   gapScale: 0.25,         // a score gap this big between two attempts gives full-strength sugar and bitter
   explore: 0.03,          // curiosity: chance that a decision is a random token instead of the favourite
   contrast: 1,         // 1: sugar/bitter only for the choices where the best and worst attempt differ
+  boredom: 0,          // >0: if the best score has not improved for this many rounds, the flies get bored...
+  exploreBored: 0.1,   // ...and more curious, until something improves again
+  wild: 0,             // >0: the first of a fly's programs each round is a "wild idea" with this much curiosity
 };
 
 export class FlyPopulation {
@@ -73,8 +76,8 @@ export class FlyPopulation {
     return (a - v) / (this.o.innateNorm ? this.g.norm[combo] : a + v + 1e-9);
   }
 
-  write(f, T = this.o.temperature) {
-    const ki = this.g.keyIndex, explore = this.o.explore;
+  write(f, T = this.o.temperature, curiosity = null) {
+    const ki = this.g.keyIndex, explore = curiosity ?? (this.bored ? this.o.exploreBored : this.o.explore);
     return writeProgram((line, state, opts) => {
       // curiosity: now and then a fly just tries something random
       if (explore > 0 && Math.random() < explore) return Math.floor(Math.random() * opts.length);
@@ -121,7 +124,7 @@ export class FlyPopulation {
       let best = null, bad = null;
       for (let a = 0; a < o.attempts; a++) {
         const focused = o.focus && a === 0;
-        const p = this.write(f, focused ? o.focusTemperature : o.temperature);
+        const p = this.write(f, focused ? o.focusTemperature : o.temperature, o.wild > 0 && a === 0 ? o.wild : null);
         const r = judge(p.code);
         if (focused) this.focused[f] = { p, r };
         if (!best || r.score > best.r.score) best = { p, r };
@@ -206,10 +209,15 @@ export class FlyPopulation {
     for (const [src, dst] of copies) this.copyMemory(src, dst);
     let best = 0;
     for (let f = 1; f < n; f++) if (this.score[f] > this.score[best]) best = f;
+    // boredom: no progress for a while makes the flies more curious
+    if (o.boredom > 0) {
+      if (this.bestSeen === undefined || this.score[best] > this.bestSeen + 0.005) { this.bestSeen = this.score[best]; this.improvedAt = this.gen; }
+      this.bored = this.gen - this.improvedAt > o.boredom;
+    }
     if (this.score[best] > this.bestEver.score) this.bestEver = { score: this.score[best], passed: this.passed[best], code: this.shown[best].code, tokens: this.shown[best].tokens, gen: this.gen, fly: best };
     const mean = this.score.reduce((a, b) => a + b, 0) / n;
     const solved = this.passed.reduce((a, p) => a + (p === 8 ? 1 : 0), 0);
-    const stat = { gen: this.gen, best: this.score[best], bestPassed: this.passed[best], mean, solved, bestFly: best };
+    const stat = { gen: this.gen, best: this.score[best], bestPassed: this.passed[best], mean, solved, bestFly: best, bored: !!this.bored };
     this.history.push(stat);
     this.gen++;
     this.lastCopies = copies;

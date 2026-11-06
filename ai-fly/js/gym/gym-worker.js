@@ -3,6 +3,8 @@ import { parseGym, FlyPopulation } from './population.js';
 
 let pop = null;
 const SLOTS = 6, PER = 11;   // up to 6 objects per fly, 11 numbers each
+// each fly's first program that passed all 8 tests (its choices), for the sugar-cube reward
+const perfect = new Map();
 
 // compact description of each fly's döner shop, for the wall of thumbnails
 function summarise() {
@@ -42,10 +44,13 @@ self.onmessage = async (e) => {
         fetch(new URL('../../data/gym.bin', import.meta.url)).then((r) => r.arrayBuffer()),
       ]);
       pop = new FlyPopulation(parseGym(buf, meta), m.flies, m.opts);
+      perfect.clear();
       postMessage({ type: 'ready', id: m.id, lab: m.lab });
     } else if (m.type === 'step') {
       const t0 = performance.now();
       const stat = pop.generation();
+      for (const [, dst] of pop.lastCopies || []) perfect.delete(dst);   // that desk got someone else's memory
+      for (let f = 0; f < pop.n; f++) if (pop.passed[f] === 8 && !perfect.has(f)) perfect.set(f, pop.shown[f].decisions.slice());
       const best = stat.bestFly;
       const summary = summarise();
       postMessage({
@@ -58,6 +63,22 @@ self.onmessage = async (e) => {
     } else if (m.type === 'code') {
       const f = m.fly;
       postMessage({ type: 'code', id: m.id, code: pop.shown[f].code, tokens: pop.shown[f].tokens, score: pop.score[f], passed: pop.passed[f], why: pop.results[f].why, part: pop.results[f].part });
+    } else if (m.type === 'codes') {
+      // what several flies are typing right now (for the screens near the visitor)
+      const list = m.flies.filter((f) => pop.shown && pop.shown[f]).map((f) => ({ fly: f, tokens: pop.shown[f].tokens, score: pop.score[f], passed: pop.passed[f] }));
+      postMessage({ type: 'codes', id: m.id, list });
+    } else if (m.type === 'reward') {
+      // a sugar cube: dopamine for every choice in the fly's (first) perfect program
+      const f = m.fly, d = perfect.get(f) || (pop.shown && pop.shown[f] ? pop.shown[f].decisions : []);
+      pop.learn(f, d, 'sugar', m.strength);
+      postMessage({ type: 'rewarded', id: m.id, choices: d.length });
+    } else if (m.type === 'hire') {
+      // a new intern at this desk: the memory goes back to the innate wiring
+      const K = pop.K, b = m.fly * 2 * K, { a0, v0 } = pop.g;
+      for (let k = 0; k < K; k++) { pop.W[b + 2 * k] = a0[k]; pop.W[b + 2 * k + 1] = v0[k]; }
+      pop.baseline[m.fly] = 0;
+      perfect.delete(m.fly);
+      postMessage({ type: 'hired', id: m.id });
     } else if (m.type === 'export') {
       // a fly's memory, so another lab can adopt it
       const L = 2 * pop.K, f = m.fly;
@@ -69,6 +90,7 @@ self.onmessage = async (e) => {
       for (let f = 1; f < pop.n; f++) if (pop.baseline[f] < pop.baseline[worst]) worst = f;
       pop.W.set(m.mem, worst * 2 * pop.K);
       pop.baseline[worst] = m.baseline;
+      perfect.delete(worst);
       postMessage({ type: 'imported', id: m.id, fly: worst });
     } else if (m.type === 'exportAll') {
       // the whole lab's memories, for saving a training run

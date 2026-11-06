@@ -1,0 +1,32 @@
+:root {
+  --bg: #0b0d12;
+  --card: #141820;
+  --text: #eceef3;
+  --muted: #8d96a7;
+  --amber: #ffb547;
+}
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme="dark"]) { --bg: #0b0d12; }
+}
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font-family: "Segoe UI", system-ui, sans-serif; }
+#view { display: block; width: 100vw; height: 100vh; cursor: crosshair; }
+#splash {
+  position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(ellipse at center, rgba(11, 13, 18, 0.55), rgba(11, 13, 18, 0.92));
+  padding: 16px;
+}
+.card { max-width: 620px; background: var(--card); border: 1px solid #262c37; border-radius: 16px; padding: 28px 32px; box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5); }
+.kicker { color: var(--amber); font-weight: 800; letter-spacing: 0.08em; font-size: 12px; margin: 0; }
+h1 { margin: 6px 0 10px; font-size: 40px; }
+.card p, .card li { color: #c7ccd6; line-height: 1.5; }
+.card ul { padding-left: 20px; margin: 10px 0 16px; }
+.card b { color: var(--text); }
+label { display: block; margin: 6px 0; color: var(--text); cursor: pointer; }
+button {
+  margin-top: 14px; background: var(--amber); color: #241503; border: 0; border-radius: 10px;
+  font: 700 16px "Segoe UI", system-ui; padding: 12px 22px; cursor: pointer;
+}
+button:disabled { opacity: 0.5; cursor: wait; }
+.status { color: var(--muted); min-height: 1.2em; }
+.links { font-size: 13px; }
+.links a { color: var(--muted); }
