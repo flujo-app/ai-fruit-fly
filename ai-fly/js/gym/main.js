@@ -5,7 +5,7 @@ import { COLORS, NEWLINE } from './grammar.js';
 
 const $ = (id) => document.getElementById(id);
 const LABS = 8;
-const MIGRATE_EVERY = 5;
+const MIGRATE_EVERY = 2;
 const ATTEMPTS = 4;
 
 // ---------------------------------------------------------------- workers (one lab each)
@@ -86,6 +86,11 @@ async function step() {
   if (solved && firstSolved < 0) {
     firstSolved = gen;
     $('milestone').textContent = `first perfect döner: generation ${gen}`;
+  }
+  if (firstSolved < 0 && history.length > 120) {
+    const before = Math.max(...history.slice(-120, -60).map((h) => h.best));
+    const now = Math.max(...history.slice(-60).map((h) => h.best));
+    $('milestone').textContent = now <= before + 0.01 ? 'stuck for a while: these flies may need “New flies”' : '';
   }
   // the labs swap their best fly now and then
   if (gen % MIGRATE_EVERY === 0) {

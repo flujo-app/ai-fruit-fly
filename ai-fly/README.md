@@ -69,11 +69,14 @@ keywords, names, numbers, colours and symbols. Open <http://127.0.0.1:8765/fly-g
 - **Learning:** each round, every fly writes 4 programs. A stand-in for three.js runs each one and
   the customer gives a single rating out of 8, with partial credit. The fly's best program earns
   sugar and its worst earns bitter. Each lab copies its best flies' memories over its weakest
-  ones, and the labs swap their best fly every 5 rounds.
+  ones, and the labs swap their best fly every 2 rounds.
 - **Results** (`node tools/train_gym.mjs 512 300`): random typing averages 0.4 of 8 and never
   passes more than 3 tests. With 512 flies, 5 of 8 runs produced flies that pass all 8 tests,
-  first in round 94 to 238. The other runs got stuck between 7.5 and 7.96. Three things made it
-  work:
+  first in round 94 to 238. The other runs got stuck between 7.5 and 7.96. With 1,024 flies,
+  5 of 6 runs succeeded (first perfect döner in round 127 to 181), and with labs swapping flies
+  every 2 rounds, 2 of 2. In the browser on an 8-core PC, it runs at about 3.5 rounds per second.
+  One test run had its first perfect döner in round 280, after 71 seconds. If a run stays stuck,
+  press "New flies". Three things made it work:
   1. Each fly compares its own attempts, which gives a much clearer signal than one attempt per round.
   2. Smells are about objects instead of line numbers, so inserting a line doesn't scramble the memory.
   3. The customer gives partial credit, for example for "almost a spit" or "the grill moved part of the way".
