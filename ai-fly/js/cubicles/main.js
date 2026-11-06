@@ -50,8 +50,11 @@ const hud = new Hud();
 const recorder = new Recorder(canvas);
 const near = Array.from({ length: 8 }, () => new NearDesk(scene, office));
 
+// ?size=1920x1080: always draw (and record) at this size, whatever the window size
+const FIXED = P.has('size') ? P.get('size').split('x').map(Number) : null;
+if (FIXED) renderer.setPixelRatio(1);
 function resize() {
-  const w = innerWidth, h = innerHeight;
+  const [w, h] = FIXED || [innerWidth, innerHeight];
   renderer.setSize(w, h, false);
   camera.aspect = w / h;
   camera.updateProjectionMatrix();
@@ -333,7 +336,9 @@ async function autopilot() {
     const [to, sec, look, cap] = legs[k % legs.length];
     if (cap) caption(cap);
     if (k >= legs.length) caption('Still looking for the first perfect döner…');
-    await Promise.race([glide(to, sec, look), new Promise((r) => { const t = setInterval(() => { if (party.active) { clearInterval(t); r(); } }, 100); })]);
+    let watch;
+    await Promise.race([glide(to, sec, look), new Promise((r) => { watch = setInterval(() => { if (party.active) r(); }, 100); })]);
+    clearInterval(watch);
     tweens.length = 0;
     k++;
   }

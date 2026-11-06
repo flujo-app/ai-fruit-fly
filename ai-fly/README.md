@@ -81,13 +81,15 @@ keywords, names, numbers, colours and symbols. Open <http://127.0.0.1:8765/fly-g
   sugar and its worst earns bitter, but only for the tokens where the two programs differ. Each
   decision has a 3% chance of being a random token (curiosity). Each lab copies its best flies'
   memories over its weakest ones, and the labs swap their best fly every 2 rounds.
-- **Results** (`node tools/train_gym.mjs 1024 600 islands=8 migrateEvery=2`): random typing
-  averages about 0.7 of 8 and never passes more than 3 tests. Against the current customer, 2 of
-  4 headless runs produced a döner that passes all 8 tests, in rounds 123 and 225. The other two
-  were still stuck after 500 rounds, at 7.5 and 7.8 of 8 (a döner that is still too wide, or a
-  grill that won't move behind the meat). So if a run stays stuck, press "New flies". In the
-  browser on an 8-core PC, training runs at about 2 rounds per second. The recorded run had its
-  first perfect döner in round 219, after 2 minutes 16 seconds. What made it work:
+- **Results** (`node tools/train_gym.mjs 1024 1000 islands=8 migrateEvery=2 restartAfter=300`):
+  random typing averages about 0.7 of 8 and never passes more than 3 tests. Against the current
+  customer, **6 of 6 headless runs produced a perfect döner within 1,000 rounds**: four on the
+  first try (rounds 204, 298, 367 and 414), and two after one restart with new flies, which
+  happens when the best score hasn't improved for 300 rounds (rounds 635 and 661). The Cubicles
+  office does the same restart by itself; in the Fly Gym page, press "New flies" when it says
+  the flies are stuck. In the browser on an 8-core PC, training runs at about 2 to 3 rounds per
+  second. The recorded Fly Gym run had its first perfect döner in round 219, after 2 minutes 16
+  seconds. What made it work:
   1. Each fly compares its own attempts: much clearer than one attempt per round.
   2. Only the tokens that differ between the best and worst attempt are rewarded or punished, so good habits aren't worn down.
   3. Smells are about objects instead of line numbers, so inserting a line doesn't scramble the memory.
@@ -98,6 +100,12 @@ keywords, names, numbers, colours and symbols. Open <http://127.0.0.1:8765/fly-g
      object, so learning "the döner must be tall" also made the bread tall, and a flat round
      dürüm was nearly impossible to learn. (A bread loaf never had this problem, because box
      sizes are separate blanks from cylinder sizes.)
+  8. No traps that need two changes at once. Whole runs got stuck on a döner exactly as wide as
+     tall (making it taller also needed a longer spit) and on a grill just in front of the back of
+     the meat (each step back was worth too little to notice). The customer now accepts a döner
+     that is at least as tall as it is wide, and every step towards a wider top or towards a grill
+     behind the meat earns clear credit. Things that did not help: more curiosity when progress
+     stalls, one "wild idea" per round, and swapping flies between labs less often.
 
 **The loopholes, and the pickier customer.** The first customer only checked a list of facts: a
 brown cone exists, something glows near it, something bread-coloured is lower, and so on. The flies
@@ -149,6 +157,9 @@ programs was chosen by a fly.
 
 The same training as the Fly Gym, as an interactive three.js world. 1,024 flies (8 labs = 8 teams
 of 128) sit at 1,024 desks in an open-plan office. Each one types at its own computer.
+`../media/cubicles-demo.mp4` is one unedited take recorded by the page itself
+(`cubicles.html?autopilot&record&size=1280x720`): the first perfect döner came in round 424, about
+2.5 minutes in.
 
 - **Walk around:** WASD (or the arrow keys), Shift to run, the mouse to look (click into the
   view first). You can't walk through cubicles; a ramp leads up to the supervisor deck.
@@ -170,12 +181,15 @@ of 128) sit at 1,024 desks in an open-plan office. Each one types at its own com
 - **Options:** `?autostart` starts training at full speed, `?record` records from the start, and
   `?autopilot` lets the camera walk by itself (intro, a tour while they train, the walk to the
   winner, sugar, contract, the flight to management) and then stops the recording. Use
-  `cubicles.html?autopilot&record` for an unattended demo video. `?cam=x,z,yaw,pitch,height` places
-  the camera, and `?testparty` pretends round 20's best fly won (to try the party quickly).
+  `cubicles.html?autopilot&record` for an unattended demo video. `?size=1280x720` always draws
+  (and records) at that size, `?cam=x,z,yaw,pitch,height` places the camera, and `?testparty`
+  pretends round 20's best fly won (to try the party quickly).
 - **Recording:** REC (or R) records the 3D view, including the on-screen text, straight from the
   canvas. Every 2 seconds the video so far is sent to `serve.py`, which adds it to
   `ai-fly/recordings/<name>.webm`, so there is nothing to stitch together. Without the local
-  server, the video is downloaded when you stop. The file can't be scrubbed until it's repacked
+  server, the video is downloaded when you stop. It records at 24 frames per second; in a
+  browser without a hardware video encoder, record at 1280x720 (at 1920x1080 the test browser
+  ran out of memory after a few minutes). The file can't be scrubbed until it's repacked
   (`ffmpeg -i in.webm -c copy out.webm`) or converted to MP4.
 
 ## What's real and what's hand-made

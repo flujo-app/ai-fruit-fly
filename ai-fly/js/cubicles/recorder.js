@@ -20,8 +20,13 @@ export class Recorder {
     this.serverOk = true;
     this.chunks = [];
     this.startedAt = performance.now();
-    const stream = this.canvas.captureStream(30);
-    this.rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 14_000_000 });
+    // 24 frames per second and a bitrate that depends on the picture size keep the encoder from
+    // falling behind (a backlog of raw frames can run a browser out of memory)
+    const stream = this.canvas.captureStream(24);
+    const bits = Math.round(Math.min(12e6, (this.canvas.width * this.canvas.height * 24) / 5));
+    this.rec = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: bits });
+    // each piece is kept only until the server has it (if the server fails, everything from then on
+    // is kept for a download at the end)
     this.rec.ondataavailable = (e) => {
       if (!e.data || !e.data.size) return;
       this.chunks.push(e.data);
@@ -30,6 +35,7 @@ export class Recorder {
         if (!ok) return false;
         try {
           const r = await fetch(`/recording/${this.name}?part=${part}`, { method: 'POST', body: e.data });
+          if (r.ok) this.chunks.shift();
           return r.ok;
         } catch { return false; }
       });
