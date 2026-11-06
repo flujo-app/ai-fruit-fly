@@ -257,10 +257,11 @@ export class Party {
     return true;
   }
 
+  // stop dancing and turn round to face the visitor in the aisle
   calmDown() {
     const d = this.desk;
     d.pivot.position.y = SEAT.y + 0.12;
-    d.pivot.rotation.y = Math.PI / 2;
+    d.pivot.rotation.y = -Math.PI / 2;
     d.fly.root.rotation.z = SEAT.pitch;
   }
 
@@ -300,6 +301,7 @@ export class Party {
     const k = f.t < 0.5 ? 2 * f.t * f.t : 1 - (-2 * f.t + 2) ** 2 / 2;   // ease in and out
     const p = f.curve.getPoint(k), ahead = f.curve.getPoint(Math.min(1, k + 0.01));
     f.fly.root.position.copy(p);
+    f.fly.root.scale.setScalar(SEAT.scale * (1 + 0.45 * k));   // managers grow a little
     if (f.t < 1) {
       f.fly.root.rotation.set(0, Math.atan2(-(ahead.z - p.z), ahead.x - p.x), -0.15);
       f.fly.update(dt, { speed: 0, turn: 0, mode: 'flight', proboscis: 0 });

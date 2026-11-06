@@ -24,6 +24,8 @@ export class GymRunner {
     this.labStats = [];
     this.lastResults = [];
     this.genTimes = [];
+    this.bestSoFar = -1;
+    this.improvedAt = 0;
   }
 
   get flies() { return this.labs * this.perLab; }
@@ -78,6 +80,7 @@ export class GymRunner {
       if (!best || r.best.score > best.score) best = { ...r.best, lab };
     });
     const mean = sum / this.flies;
+    if (best.score > this.bestSoFar + 0.005) { this.bestSoFar = best.score; this.improvedAt = this.gen; }
     this.history.push({ best: best.score, mean, solved: solved / this.flies });
     const firstNow = solved > 0 && this.firstSolved < 0;
     if (firstNow) this.firstSolved = this.gen;
@@ -94,6 +97,9 @@ export class GymRunner {
     if (this.genTimes.length > 10) this.genTimes.shift();
     return { gen: this.gen, best, mean, solved, results, firstNow };
   }
+
+  // rounds since the best score last improved
+  get stagnantFor() { return this.gen - this.improvedAt; }
 
   // has the best score stopped improving for a while?
   get stuck() {

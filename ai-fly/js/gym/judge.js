@@ -220,16 +220,18 @@ export function judge(code) {
     const biggest = w.meshes.every((m) => m === meat || shapes.get(m).vol <= ms.vol);
     const round = cyl && mp.radialSegments >= 8;
     const tallOk = M.h >= 1.8 && M.h <= 3.5, baseOk = cyl && mp.radiusBottom >= 0.3, wider = cyl && mp.radiusTop > mp.radiusBottom * 1.2;
+    // (gradual: an upside-down cone earns a little for every step towards a wider top)
+    const widerCredit = !cyl ? 0 : wider ? 1 : 0.8 * Math.min(1, Math.max(0, (mp.radiusTop / Math.max(mp.radiusBottom, 0.01) - 0.6) / 0.6));
     const heightCredit = tallOk ? 1 : Math.max(0, 1 - Math.min(Math.abs(M.h - 1.8), Math.abs(M.h - 3.5)) / 1.5) * 0.7;
     const baseCredit = baseOk ? 1 : cyl ? Math.min(0.7, mp.radiusBottom / 0.3 * 0.7) : 0;
-    // a döner is clearly taller than it is wide (not a lampshade), but not a pole either
+    // a döner is at least as tall as it is wide (not a lampshade), but not a pole either
     // (partial credit also counts a narrower bottom, so a too-wide cone can slim down one step at a time)
-    const slim = M.h / M.w, slimOk = slim >= 1.3 && slim <= 2.5;
+    const slim = M.h / M.w, slimOk = slim >= 1 && slim <= 2.5;
     const softSlim = cyl ? M.h / (1.5 * mp.radiusTop + 0.5 * mp.radiusBottom) : slim;
-    const slimCredit = slimOk ? 1 : 0.8 * Math.min(1, softSlim / 1.3, 2.5 / slim);
+    const slimCredit = slimOk ? 1 : 0.8 * Math.min(1, softSlim, 2.5 / slim);
     // a döner's height matters most: it should pay off before the spit and bread are adjusted to it
-    part.shape = (cyl ? (round ? 0.15 : 0.05) : 0) + (wider ? 0.1 : 0) + 0.25 * heightCredit + 0.2 * slimCredit + 0.1 * baseCredit + (biggest ? 0.2 : 0);
-    why.shape = part.shape > 0.99 ? 'A proper döner cone.' : !cyl ? `That is a ${meat.geometry.type === 'BoxGeometry' ? 'box' : 'ball'}, not a döner.` : !round ? 'A döner is round, not pointy.' : !wider ? 'The cone is not wider at the top.' : !baseOk ? 'The cone ends in a needle point.' : !tallOk ? 'Wrong height for a döner.' : !slimOk ? (slim < 1.3 ? 'Too wide: that is a lampshade, not a döner.' : 'Too skinny: that is a pole, not a döner.') : 'Something else is bigger than the döner.';
+    part.shape = (cyl ? (round ? 0.15 : 0.05) : 0) + 0.1 * widerCredit + 0.25 * heightCredit + 0.2 * slimCredit + 0.1 * baseCredit + (biggest ? 0.2 : 0);
+    why.shape = part.shape > 0.99 ? 'A proper döner cone.' : !cyl ? `That is a ${meat.geometry.type === 'BoxGeometry' ? 'box' : 'ball'}, not a döner.` : !round ? 'A döner is round, not pointy.' : !wider ? 'The cone is not wider at the top.' : !baseOk ? 'The cone ends in a needle point.' : !tallOk ? 'Wrong height for a döner.' : !slimOk ? (slim < 1 ? 'Too wide: that is a lampshade, not a döner.' : 'Too skinny: that is a pole, not a döner.') : 'Something else is bigger than the döner.';
     // 4. spit: thin, vertical, through the middle and sticking out at the top
     const rods = w.meshes.filter((m) => m !== meat && m.geometry.type === 'CylinderGeometry');
     // each end of the rod counts on its own, so making one end thinner already helps
@@ -248,7 +250,7 @@ export function judge(code) {
     const grills = w.meshes.filter((m) => m !== meat && !shapes.get(m).thin && warmGlow(m.material.emissive));
     const heatParts = (g) => {
       const G = boxOf(g), gap = M.z0 - G.z1;
-      const behind = gap >= 0.05 ? 1 : 0.7 * Math.max(0, Math.min(1, 1 + (gap - 0.05) / 2));   // a little credit for moving it back part of the way
+      const behind = gap >= 0.05 ? 1 : 0.8 * Math.max(0, Math.min(1, 1 + (gap - 0.05) / 1.2));   // credit for every step back
       const dy = Math.abs(g.position.y - meat.position.y);
       const apart = touches(G, M) ? 0 : 1, level = dy < 0.8 ? 1 : 0.7 * Math.max(0, 1 - (dy - 0.8) / 2);
       // wide and tall enough to heat the meat, but not bigger than the döner
@@ -256,7 +258,7 @@ export function judge(code) {
       const near = gap <= 2 ? 1 : 0.7 * Math.max(0, 1 - (gap - 2) / 2);
       const side = Math.abs(g.position.x - meat.position.x), aligned = side <= 0.6 ? 1 : 0.7 * Math.max(0, 1 - (side - 0.6) / 2);
       const ball = notBall(g), hot = looksHot(g);
-      return { behind, apart, level, wide, tall, near, aligned, ball, hot, score: 0.1 + 0.15 * behind + 0.1 * apart + 0.05 * level + 0.1 * wide + 0.1 * tall + 0.1 * near + 0.1 * aligned + 0.1 * ball + 0.1 * hot };
+      return { behind, apart, level, wide, tall, near, aligned, ball, hot, score: 0.05 + 0.25 * behind + 0.1 * apart + 0.05 * level + 0.1 * wide + 0.1 * tall + 0.05 * near + 0.1 * aligned + 0.1 * ball + 0.1 * hot };
     };
     // every object has one job: the spit and the grill are picked together, so one glowing rod in the
     // middle of the meat cannot collect credit as both

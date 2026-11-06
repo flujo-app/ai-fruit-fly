@@ -121,9 +121,8 @@ tightened step by step, and the flies found a new gap each time:
 The customer now checks that:
 - the döner stands in the middle, is brightly lit **on the side facing the customer** (a simple
   light calculation), and nothing big hides it;
-- the meat is brown, doesn't glow, is the biggest thing in the shop, is round, is **clearly taller
-  than it is wide**, and doesn't end in a needle point;
-- the döner is neither too wide (a lampshade) nor too skinny (a pole);
+- the meat is brown, doesn't glow, is the biggest thing in the shop, is round, is **at least as
+  tall as it is wide** (no lampshades), is not as thin as a pole, and doesn't end in a needle point;
 - the spit is thin, plain metal (it doesn't glow), vertical and sticks out at the top;
 - the grill glows **orange** right behind the meat, at a sensible size and not touching it. It
   can be a panel or a heating rod, but **not a ball** (a glowing ball looks like a light bulb) and
@@ -145,6 +144,39 @@ Fladenbrot) and the loophole döners and the lampshade fail.
 **Hand-made:** the token rules, the numbers and colours on offer, the `knife()` helper and the 8
 tests. **Real:** the learning-centre wiring and how dopamine changes it. Every token in the winning
 programs was chosen by a fly.
+
+## Cubicles (cubicles.html): the Fly Gym as an office
+
+The same training as the Fly Gym, as an interactive three.js world. 1,024 flies (8 labs = 8 teams
+of 128) sit at 1,024 desks in an open-plan office. Each one types at its own computer.
+
+- **Walk around:** WASD (or the arrow keys), Shift to run, the mouse to look (click into the
+  view first). You can't walk through cubicles; a ramp leads up to the supervisor deck.
+- **Screens:** far away, every monitor shows a small picture of the döner shop its fly is typing
+  right now (all 1,024 screens share one texture). Up close, a detailed fly takes over: its front
+  legs tap the keyboard, and its screen shows the program token by token, with the fly's own
+  choices in amber.
+- **The supervisor deck:** a big wall screen with the live training (numbers, every fly's shop,
+  the progress chart and the best fly's program) and a console of push buttons: PAUSE, 1×
+  (a round every 3.5 s, so you can watch them type), 4×, MAX, NEW FLIES (press twice) and REC.
+- **The first perfect döner:** the speed drops to 1×, the winner dances on its chair under a light
+  beam and confetti, and a path of arrows on the floor leads you to it. Then press **1** for a
+  **sugar cube** (real dopamine: every choice in its winning program gets sugar in its learning
+  centre) or **2** for a **management contract**: it flies to the glass management office, and its
+  memory is copied over the 8 weakest flies of every team (64 flies). A new intern, with a fresh
+  memory, takes its desk.
+- **Stuck flies:** if the best score doesn't improve for 300 rounds, 1,024 new flies take the
+  desks and the big screen says why.
+- **Options:** `?autostart` starts training at full speed, `?record` records from the start, and
+  `?autopilot` lets the camera walk by itself (intro, a tour while they train, the walk to the
+  winner, sugar, contract, the flight to management) and then stops the recording. Use
+  `cubicles.html?autopilot&record` for an unattended demo video. `?cam=x,z,yaw,pitch,height` places
+  the camera, and `?testparty` pretends round 20's best fly won (to try the party quickly).
+- **Recording:** REC (or R) records the 3D view, including the on-screen text, straight from the
+  canvas. Every 2 seconds the video so far is sent to `serve.py`, which adds it to
+  `ai-fly/recordings/<name>.webm`, so there is nothing to stitch together. Without the local
+  server, the video is downloaded when you stop. The file can't be scrubbed until it's repacked
+  (`ffmpeg -i in.webm -c copy out.webm`) or converted to MP4.
 
 ## What's real and what's hand-made
 
@@ -185,6 +217,12 @@ result: about 400 neurons become active and the feeding neuron MN9 fires.
   three.js stand-in and customer tests (`judge.js`), the fly population (`population.js`), one
   lab per worker (`gym-worker.js`), the wall of thumbnails (`wall.js`) and the real app template
   (`app-template.js`)
+- `js/gym/runner.js`: the training loop (one worker per lab, swapping best flies), shared by the
+  Fly Gym and Cubicles
+- `cubicles.html`, `css/cubicles.css`, `js/cubicles/`: the office: layout, walking and the shortest
+  way along the aisles (`layout.js`, `player.js`), the building and the 1,024 cubicles
+  (`office.js`), the flies near and far (`flies.js`), the supervisor deck (`supervisor.js`), the
+  winner's party (`party.js`), on-screen text (`hud.js`), recording (`recorder.js`) and `main.js`
 - `data/gym.bin`, `data/gym.json`: precomputed smell fingerprints (`tools/make_fingerprints.mjs`)
 - `tools/train_gym.mjs`: headless Fly Gym training, for experiments
 

@@ -19,6 +19,8 @@ const AUTOPILOT = P.has('autopilot');
 const LABS = 8, PER_LAB = 128;
 const PERIOD = { 1: 3500, 4: 900, max: 0 };            // milliseconds per generation (0 = as fast as possible)
 const SPEED_LABEL = { 1: '1×', 4: '4×', max: 'MAX' };
+const STUCK_AFTER = 300;   // rounds without a better best score before the flies are replaced
+let restarts = 0;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 // ---------------------------------------------------------------- the 3D world
@@ -97,7 +99,13 @@ function onStep(out) {
   // ?testparty: pretend the best fly of round 20 is a winner (to try the celebration quickly)
   else if (P.has('testparty') && runner.gen === 20 && !party.active) startParty(out.best);
   if (runner.gen % 100 === 0) fetch(`/ping?gen=${runner.gen}&best=${out.best.score.toFixed(2)}&solved=${out.solved}&speed=${runner.speed.toFixed(1)}`).catch(() => {});
-  if (runner.stuck && !banner) banner = 'Stuck for a while: these flies may need NEW FLIES';
+  // a safety net: when the flies stop improving for a long time, new flies take the desks
+  if (runner.firstSolved < 0 && runner.stagnantFor > STUCK_AFTER && !party.active) {
+    hud.toast(`No progress for ${STUCK_AFTER} rounds: these flies are stuck. Hiring 1,024 new ones.`, 7);
+    restarts++;
+    newFlies(`New flies (restart ${restarts}): the last ones were stuck at ${runner.bestSoFar.toFixed(2)} / 8 for ${STUCK_AFTER} rounds.`);
+    return;
+  }
   updateStatus();
 }
 
@@ -114,12 +122,12 @@ function drawScreen() {
   });
 }
 
-async function newFlies() {
+async function newFlies(reason = '') {
   const was = speed;
   speed = 'pause';
   while (looping) await sleep(30);
   party.endParty();
-  banner = ''; last = null;
+  banner = reason; last = null;
   await runner.init(PER_LAB);
   office.drawAtlas([], 0);
   for (const d of near) d.setCode(null, 0, 0);
@@ -328,7 +336,6 @@ async function autopilot() {
     await Promise.race([glide(to, sec, look), new Promise((r) => { const t = setInterval(() => { if (party.active) { clearInterval(t); r(); } }, 100); })]);
     tweens.length = 0;
     k++;
-    if (runner.gen > 1500 && !party.active) { pressButton('reset'); pressButton('reset'); }
   }
   // the winner!
   caption(`Generation ${runner.gen}: fly ${party.fly + 1} in lab ${party.lab + 1} wrote a perfect döner. Speed drops to 1×`);

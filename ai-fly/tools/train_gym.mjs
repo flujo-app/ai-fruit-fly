@@ -10,11 +10,22 @@ const raw = readFileSync(join(root, `data/${process.env.GYM_DATA || 'gym'}.bin`)
 const gym = parseGym(raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength), JSON.parse(readFileSync(join(root, `data/${process.env.GYM_DATA || 'gym'}.json`), 'utf8')));
 const n = Number(process.argv[2] || 1024), gens = Number(process.argv[3] || 300);
 const opts = Object.fromEntries(process.argv.slice(4).map((a) => a.split('=')).map(([k, v]) => [k, Number(v)]));
-const pop = new FlyPopulation(gym, n, opts);
+// restartAfter=N: if the best score has not improved for N rounds, start over with new flies (the
+// rounds keep counting, so "first perfect döner at round X" includes the time lost)
+const restartAfter = opts.restartAfter || 0;
+let pop = new FlyPopulation(gym, n, opts);
+let bestSoFar = -1, improvedAt = 0, restarts = 0;
 const t0 = performance.now();
 let firstSolved = -1;
 for (let g = 0; g < gens; g++) {
+  if (restartAfter && firstSolved < 0 && g - improvedAt > restartAfter) {
+    pop = new FlyPopulation(gym, n, opts);
+    bestSoFar = -1; improvedAt = g; restarts++;
+    console.log(`round ${g}: no progress for ${restartAfter} rounds, new flies (restart ${restarts})`);
+  }
   const s = pop.generation();
+  s.gen = g;
+  if (s.best > bestSoFar + 0.005) { bestSoFar = s.best; improvedAt = g; }
   if (s.solved && firstSolved < 0) firstSolved = s.gen;
   if (g % 10 === 0 || g === gens - 1 || (s.solved && firstSolved === s.gen)) {
     console.log(`gen ${String(s.gen).padStart(4)}  best ${s.best.toFixed(2)} (${s.bestPassed}/8 tests)  mean ${s.mean.toFixed(2)}  flies with 8/8: ${s.solved}  ${((performance.now() - t0) / 1000).toFixed(1)} s`);
