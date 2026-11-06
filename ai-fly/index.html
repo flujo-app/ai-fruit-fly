@@ -1,0 +1,121 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Fruit Fly</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="c"></canvas>
+
+  <div id="loading">
+    <div class="load-card">
+      <div class="eyebrow">Whole-brain simulation</div>
+      <h1>AI Fruit Fly</h1>
+      <p>Loading the complete wiring of a real fruit fly brain: <b>138,639 neurons</b> and <b>15 million connections</b>.</p>
+      <div class="bar"><div id="load-fill"></div></div>
+      <div id="load-text">Starting…</div>
+    </div>
+  </div>
+
+  <header class="panel" id="title-card">
+    <div class="eyebrow">Live whole-brain simulation</div>
+    <h1>AI Fruit Fly</h1>
+    <p>A virtual fly steered by every neuron of a real fruit fly brain, firing in real time.</p>
+    <div class="state"><span id="state-dot"></span><span id="behaviour">Waking up…</span></div>
+  </header>
+
+  <section class="panel" id="io">
+    <h2>Senses <span>→ brain</span></h2>
+    <div class="row" data-bar="objects_L" data-max="85"><label>Left eye sees object<small>LC10a</small></label><span class="track"><i class="c-sense"></i></span><b>0</b></div>
+    <div class="row" data-bar="objects_R" data-max="85"><label>Right eye sees object<small>LC10a</small></label><span class="track"><i class="c-sense"></i></span><b>0</b></div>
+    <div class="row" data-bar="loom" data-max="300"><label>Something looming<small>LC4, LPLC2</small></label><span class="track"><i class="c-warn"></i></span><b>0</b></div>
+    <div class="row" data-bar="sugar" data-max="150"><label>Sweet taste<small>sugar GRNs</small></label><span class="track"><i class="c-sweet"></i></span><b>0</b></div>
+    <div class="row" data-bar="bitter" data-max="100"><label>Bitter taste<small>bitter GRNs</small></label><span class="track"><i class="c-bitter"></i></span><b>0</b></div>
+    <div class="row" data-bar="touch" data-max="100"><label>Antenna touch<small>JO-C/E</small></label><span class="track"><i class="c-sense"></i></span><b>0</b></div>
+    <h2>Brain <span>→ body</span></h2>
+    <div class="row" data-bar="steer_L" data-max="80"><label>Steer left<small>DNa02 &amp; co</small></label><span class="track"><i class="c-out"></i></span><b>0</b></div>
+    <div class="row" data-bar="steer_R" data-max="80"><label>Steer right<small>DNa02 &amp; co</small></label><span class="track"><i class="c-out"></i></span><b>0</b></div>
+    <div class="row" data-bar="DNp01" data-max="220"><label>Escape<small>giant fibre DNp01</small></label><span class="track"><i class="c-warn"></i></span><b>0</b></div>
+    <div class="row" data-bar="MN9" data-max="100"><label>Feed<small>MN9</small></label><span class="track"><i class="c-sweet"></i></span><b>0</b></div>
+    <div class="row" data-bar="groom" data-max="25"><label>Groom<small>DNp18 &amp; co</small></label><span class="track"><i class="c-out"></i></span><b>0</b></div>
+    <div class="row" data-bar="MDN" data-max="40"><label>Walk backwards<small>MDN</small></label><span class="track"><i class="c-out"></i></span><b>0</b></div>
+    <p class="unit">Numbers are firing rates (spikes per second).</p>
+    <div class="row slim" data-bar="hunger" data-max="100"><label>Hunger<small>hand-made rule</small></label><span class="track"><i class="c-muted"></i></span><b>0</b></div>
+  </section>
+
+  <section class="panel" id="stats">
+    <div><span>Brain speed</span><b id="st-speed">–</b></div>
+    <div><span>Spikes / s</span><b id="st-spikes">–</b></div>
+    <div><span>Busy neurons</span><b id="st-active">–</b></div>
+    <div><span>Brain time</span><b id="st-time">–</b></div>
+  </section>
+
+  <div id="brain-frame" title="Drag to turn the brain">
+    <div class="frame-label"><b>Live brain</b><span>one dot per neuron · flashes when it fires</span></div>
+    <div class="legend"><i style="--c:#2f5bff"></i>vision <i style="--c:#9d5cff"></i>central <i style="--c:#2fe39a"></i>senses <i style="--c:#ff7a2f"></i>to body</div>
+  </div>
+
+  <nav id="toolbar">
+    <button data-act="swat" class="danger"><kbd>S</kbd>Swat</button>
+    <button data-act="puff"><kbd>A</kbd>Puff air</button>
+    <button data-act="sugar"><kbd>F</kbd>Sugar drop</button>
+    <button data-act="bitter"><kbd>B</kbd>Bitter drop</button>
+    <span class="sep"></span>
+    <button data-act="camera" class="on"><kbd>C</kbd>Follow</button>
+    <button data-act="lab"><kbd>L</kbd>Brain lab</button>
+    <button data-act="info"><kbd>I</kbd>What's real?</button>
+    <span class="sep"></span>
+    <a class="navlink" href="doener.html">Döner Dev Fly →</a>
+  </nav>
+  <p id="hint">Click the cloth to drop sugar (Shift-click: bitter) · click the fly to puff air · drag to look around · H hides the panels</p>
+
+  <div id="toast"></div>
+
+  <section class="panel hidden" id="lab">
+    <header><h2>Brain lab</h2><button id="lab-close" aria-label="Close">×</button></header>
+    <p>Switch off real neurons in the simulated brain and see what changes.</p>
+    <label class="toggle"><input type="checkbox" data-lesion="DNp01"><span></span><div><b>Silence the escape neurons</b><small>2 giant fibre cells (DNp01). Then press Swat.</small></div></label>
+    <label class="toggle"><input type="checkbox" data-lesion="MN9"><span></span><div><b>Silence the feeding motor neurons</b><small>2 MN9 cells that push out the mouthparts.</small></div></label>
+    <label class="toggle"><input type="checkbox" data-lesion="objects_L"><span></span><div><b>Blind the left eye to objects</b><small>234 LC10a cells on the left side.</small></div></label>
+  </section>
+
+  <section class="modal hidden" id="info">
+    <div class="modal-card">
+      <header><h2>What's real, and what's hand-made?</h2><button id="info-close" aria-label="Close">×</button></header>
+      <div class="cols">
+        <div>
+          <h3 class="real">Real</h3>
+          <ul>
+            <li><b>The wiring.</b> All 138,639 neurons and 15,091,983 connections of an adult female fruit fly brain, mapped from electron microscope images by the FlyWire team (2024).</li>
+            <li><b>The brain model.</b> Each neuron follows the simple "charge up, then fire" rule from Shiu et al. (Nature, 2024), with their settings. In lab tests, that model predicted real fly behaviour well.</li>
+            <li><b>Which neurons are used.</b> Senses feed into real, named cell types (eye cells LC10a, LC4 and LPLC2, sugar and bitter taste cells, antenna touch cells). Movement is read from real output cells: the giant fibre (escape), MN9 (feeding), MDN (walking backwards) and steering cells such as DNa02.</li>
+            <li><b>The decisions.</b> Steering toward food, escaping the swatter, feeding on sugar but not on bitter, and grooming after a puff of air all come from signals flowing through the real wiring.</li>
+          </ul>
+        </div>
+        <div>
+          <h3 class="made">Hand-made</h3>
+          <ul>
+            <li><b>The body.</b> The 3D fly, its leg movement and its flight path are animations, not a physics model. The fly's real "spinal cord" isn't part of the FlyWire map.</li>
+            <li><b>The eyes, tongue and antennae.</b> How strongly each sense fires is a simple formula based on what's around the fly.</li>
+            <li><b>Turning signals into movement.</b> Which output cells mean "turn", "feed" or "jump", and how strongly, was chosen by testing the model. The right side's steering signal is boosted ×1.5 to balance both sides.</li>
+            <li><b>Extras.</b> Hunger, gentle random wandering when nothing is in sight, and staying on the cloth are simple rules. Smell is left out, because it sets off far too much of the brain at once in this model.</li>
+          </ul>
+        </div>
+      </div>
+      <p class="credits">Data: FlyWire Consortium (Dorkenwald et al. 2024; Schlegel et al. 2024), licensed CC BY-NC 4.0 (non-commercial use only). Brain model: Shiu et al. 2024 (MIT license). 3D: three.js.</p>
+    </div>
+  </section>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>

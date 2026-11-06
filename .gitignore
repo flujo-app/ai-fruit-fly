@@ -1,0 +1,9 @@
+# downloaded source data (re-download with the links in ai-fly/README.md)
+raw_data/
+
+# local tool settings
+.claude/
+
+__pycache__/
+node_modules/
+*.log

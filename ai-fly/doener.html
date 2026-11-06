@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Döner Dev Fly</title>
+  <link rel="stylesheet" href="css/doener.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <div class="eyebrow">Fruit fly brain × web development</div>
+      <h1>Döner Dev Fly</h1>
+      <p>Can a fruit fly brain write a web app that shows a rotating döner kebab? Its real learning centre picks code blocks by smell and learns from sugar and bitter.</p>
+    </div>
+    <div class="controls">
+      <button id="btn-run" class="primary"><span id="run-label">Start coding</span></button>
+      <button id="btn-step">One round</button>
+      <div class="seg" id="speed" role="group" aria-label="Speed">
+        <button data-speed="1" class="on">1×</button><button data-speed="4">4×</button><button data-speed="20">20×</button>
+      </div>
+      <button id="btn-forget" title="Erase what the fly has learned">Wipe memory</button>
+      <button id="btn-download" title="Download the app the fly wrote">Download app</button>
+      <a class="link" href="index.html">← Fly world</a>
+    </div>
+  </header>
+
+  <main class="grid">
+    <section class="col left">
+      <div class="card flycam">
+        <canvas id="flycam"></canvas>
+        <div class="overlay-label"><b id="phase">Loading the fly's learning centre…</b></div>
+      </div>
+      <div class="card options">
+        <div class="card-head"><h2 id="slot-title">Next decision</h2><span id="slot-step" class="muted"></span></div>
+        <div id="option-list"></div>
+        <p class="hint">Bars show the fly's chance of picking each block, based on how its learning centre reacts to the block's smell.</p>
+      </div>
+      <div class="card brain">
+        <canvas id="brain"></canvas>
+        <div class="overlay-label"><b>Learning centre</b><span>5,554 real neurons · dots flash when they fire</span></div>
+      </div>
+    </section>
+
+    <section class="col mid card code-card">
+      <div class="card-head">
+        <h2>doener.html <span class="muted">written by the fly</span></h2>
+        <span class="round-pill">Round <b id="round">0</b></span>
+      </div>
+      <pre id="code" class="code"></pre>
+    </section>
+
+    <section class="col right">
+      <div class="card preview">
+        <div class="card-head"><h2>Live preview</h2><span class="muted" id="preview-note">the fly's latest app</span></div>
+        <iframe id="preview" title="The döner app written by the fly"></iframe>
+      </div>
+      <div class="card tests">
+        <div class="card-head"><h2>Customer's tests</h2><span class="score"><b id="score">–</b>/8</span></div>
+        <ul id="test-list"></ul>
+        <div class="verdict" id="verdict">The customer is waiting…</div>
+      </div>
+      <div class="card chart">
+        <div class="card-head"><h2>Tests passed per round</h2><span class="muted" id="chart-note"></span></div>
+        <canvas id="chart"></canvas>
+      </div>
+    </section>
+  </main>
+
+  <footer class="honest">
+    <b>What's really happening:</b> the fly doesn't understand code. Each code block gets its own made-up smell (a few of the fly's 56 smell channels).
+    The fly's real learning-centre wiring from the FlyWire map (5,554 neurons: smell neurons, 5,177 Kenyon cells and 96 output neurons) decides how much it likes each smell.
+    A passed test gives sugar and a failed test gives bitter. That changes the learning cells' connections in the same way real flies learn which smells mean food.
+    We wrote the code blocks and the customer's tests. The fly only learns which blocks to pick.
+  </footer>
+
+  <script type="module" src="js/doener/main.js"></script>
+</body>
+</html>
