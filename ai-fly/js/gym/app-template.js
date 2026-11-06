@@ -18,8 +18,10 @@ import * as THREE from 'three';
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x1d1712);
 const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 0.1, 100);
-camera.position.set(2.4, 1.6, 7.6);
-camera.lookAt(0, -0.3, 0);
+// add ?side to the address for a view from the side (shows what is behind the döner)
+const side = new URLSearchParams(location.search).has('side');
+camera.position.set(side ? 7.2 : 2.4, side ? 2.4 : 1.6, side ? 3.4 : 7.6);
+camera.lookAt(0, -0.4, side ? -0.8 : 0);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(devicePixelRatio);
 renderer.setSize(innerWidth, innerHeight);
