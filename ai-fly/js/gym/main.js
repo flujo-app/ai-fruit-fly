@@ -2,11 +2,10 @@ import { Wall } from './wall.js';
 import { buildRealApp } from './app-template.js';
 import { TESTS } from './judge.js';
 import { COLORS, NEWLINE } from './grammar.js';
+import { GymRunner } from './runner.js';
 
 const $ = (id) => document.getElementById(id);
 const LABS = 8;
-const MIGRATE_EVERY = 2;
-const ATTEMPTS = 4;
 // ?demo: start training by itself and stop a little after the first perfect döner (for recordings).
 // In demo mode the whole training state is saved to the local server every 20 rounds, and
 // ?demo&resume continues from the last save (so a long run can be recorded in pieces).
@@ -16,98 +15,35 @@ const RESUME = PARAMS.has('resume');
 const SAVE_EVERY = DEMO ? 20 : 0;
 const DEMO_AFTER = 40;
 
-async function saveState() {
-  const parts = await Promise.all(workers.map((w) => call(w, { type: 'exportAll' })));
-  const meta = { gen, firstSolved, programs, tokensTyped, history, perLab, labs: LABS, wLen: parts[0].W.length, banner: $('banner').innerHTML };
-  const metaBytes = new TextEncoder().encode(JSON.stringify(meta));
-  const head = 4 + Math.ceil(metaBytes.length / 4) * 4;
-  const buf = new ArrayBuffer(head + LABS * (meta.wLen + perLab) * 4);
-  new Uint32Array(buf, 0, 1)[0] = metaBytes.length;
-  new Uint8Array(buf, 4, metaBytes.length).set(metaBytes);
-  parts.forEach((p, lab) => {
-    new Float32Array(buf, head + lab * meta.wLen * 4, meta.wLen).set(p.W);
-    new Float32Array(buf, head + LABS * meta.wLen * 4 + lab * perLab * 4, perLab).set(p.baseline);
-  });
-  await fetch(`/state/demo?gen=${gen}`, { method: 'POST', body: buf }).catch(() => {});
-}
-
-async function loadState() {
-  const r = await fetch('/state/demo').catch(() => null);
-  if (!r || !r.ok) return false;
-  const buf = await r.arrayBuffer();
-  const len = new Uint32Array(buf, 0, 1)[0];
-  const meta = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, len)));
-  if (meta.perLab !== perLab || meta.labs !== LABS) return false;
-  const head = 4 + Math.ceil(len / 4) * 4;
-  await Promise.all(workers.map((w, lab) => {
-    const W = new Float32Array(buf.slice(head + lab * meta.wLen * 4, head + (lab + 1) * meta.wLen * 4));
-    const baseline = new Float32Array(buf.slice(head + LABS * meta.wLen * 4 + lab * perLab * 4, head + LABS * meta.wLen * 4 + (lab + 1) * perLab * 4));
-    return call(w, { type: 'importAll', W, baseline, gen: meta.gen }, [W.buffer, baseline.buffer]);
-  }));
-  ({ gen, firstSolved, programs, tokensTyped, history } = meta);
-  if (meta.banner) { $('banner').innerHTML = meta.banner; $('banner').classList.add('show'); }
-  if (firstSolved > 0) $('milestone').textContent = `first perfect döner: generation ${firstSolved}`;
-  $('st-gen').textContent = gen.toLocaleString();
-  drawChart();
-  return true;
-}
+const runner = new GymRunner({ labs: LABS, perLab: Number($('flies').value) });
 
 function celebrate(best) {
   const el = $('banner');
-  el.innerHTML = `<b>Generation ${gen}:</b> fly ${best.fly + 1} in lab ${best.lab + 1} just typed a döner app that passes all 8 tests!`;
+  el.innerHTML = `<b>Generation ${runner.gen}:</b> fly ${best.fly + 1} in lab ${best.lab + 1} just typed a döner app that passes all 8 tests!`;
   el.classList.add('show');
-  if (DEMO) fetch(`/ping?solved=${gen}`).catch(() => {});
-}
-
-// ---------------------------------------------------------------- workers (one lab each)
-let workers = [];
-let perLab = Number($('flies').value);
-let nextId = 1;
-const pending = new Map();
-function call(w, msg, transfer = []) {
-  const id = nextId++;
-  return new Promise((resolve, reject) => { pending.set(id, { resolve, reject }); w.postMessage({ ...msg, id }, transfer); });
-}
-function makeWorker() {
-  const w = new Worker(new URL('./gym-worker.js', import.meta.url), { type: 'module' });
-  w.onmessage = (e) => {
-    const m = e.data;
-    const p = pending.get(m.id);
-    if (!p) return;
-    pending.delete(m.id);
-    m.type === 'error' ? p.reject(new Error(m.message)) : p.resolve(m);
-  };
-  return w;
+  if (DEMO) fetch(`/ping?solved=${runner.gen}`).catch(() => {});
 }
 
 // ---------------------------------------------------------------- state
 let wall = null;
 let running = false, busy = false;
-let gen = 0, firstSolved = -1, programs = 0, tokensTyped = 0;
-let history = [];
-let labStats = [];
-let lastResults = [];
 let selected = null;        // [lab, fly] being inspected, or null = follow the best fly
 let shownCode = '';
-let lastFrameAt = 0, previewAt = 0, genTimes = [];
+let lastFrameAt = 0, previewAt = 0;
 
 async function setup() {
   running = false;
   setRunLabel();
   $('btn-run').disabled = true;
   $('btn-reset').disabled = true;
-  for (const w of workers) w.terminate();
-  pending.clear();
-  perLab = Number($('flies').value);
-  workers = Array.from({ length: LABS }, makeWorker);
-  gen = 0; firstSolved = -1; programs = 0; tokensTyped = 0; history = []; labStats = []; lastResults = []; selected = null; shownCode = '';
+  await runner.init(Number($('flies').value));
+  selected = null; shownCode = '';
   $('banner').classList.remove('show');
-  $('st-flies').textContent = (LABS * perLab).toLocaleString();
+  $('st-flies').textContent = runner.flies.toLocaleString();
   ['st-gen', 'st-solved', 'st-programs', 'st-tokens'].forEach((id) => ($(id).textContent = '0'));
   ['st-best', 'st-mean', 'st-speed'].forEach((id) => ($(id).textContent = '–'));
   $('milestone').textContent = '';
-  wall = new Wall($('wall'), LABS, perLab);
-  await Promise.all(workers.map((w, lab) => call(w, { type: 'init', lab, flies: perLab, opts: { attempts: ATTEMPTS } })));
+  wall = new Wall($('wall'), LABS, runner.perLab);
   $('btn-run').disabled = false;
   $('btn-reset').disabled = false;
   renderCode(null);
@@ -119,72 +55,42 @@ async function setup() {
 // ---------------------------------------------------------------- one generation for every lab
 async function step() {
   busy = true;
-  const t0 = performance.now();
-  const results = await Promise.all(workers.map((w, lab) => call(w, { type: 'step', lab })));
-  gen++;
-  lastResults = results;
-  let best = null, sum = 0, solved = 0;
-  results.forEach((r, lab) => {
-    wall.data[lab] = r.summary;
-    labStats[lab] = { best: r.stat.best, solved: r.stat.solved };
-    sum += r.stat.mean * perLab;
-    solved += r.stat.solved;
-    programs += perLab * ATTEMPTS;
-    tokensTyped += r.tokens * ATTEMPTS;
-    if (!best || r.best.score > best.score) best = { ...r.best, lab };
-  });
-  const n = LABS * perLab;
-  history.push({ best: best.score, mean: sum / n, solved: solved / n });
-  if (solved && firstSolved < 0) {
-    firstSolved = gen;
-    $('milestone').textContent = `first perfect döner: generation ${gen}`;
+  const { best, mean, solved, results, firstNow } = await runner.step();
+  results.forEach((r, lab) => { wall.data[lab] = r.summary; });
+  if (firstNow) {
+    $('milestone').textContent = `first perfect döner: generation ${runner.gen}`;
     celebrate(best);
   }
-  if (DEMO && firstSolved > 0 && gen >= firstSolved + DEMO_AFTER) {
+  if (DEMO && runner.firstSolved > 0 && runner.gen >= runner.firstSolved + DEMO_AFTER) {
     running = false;
     setRunLabel();
     document.title = 'Fly Gym (done)';
-    fetch(`/ping?done=${gen}`).catch(() => {});
+    fetch(`/ping?done=${runner.gen}`).catch(() => {});
   }
-  if (firstSolved < 0 && history.length > 120) {
-    const before = Math.max(...history.slice(-120, -60).map((h) => h.best));
-    const now = Math.max(...history.slice(-60).map((h) => h.best));
-    $('milestone').textContent = now <= before + 0.01 ? 'stuck for a while: these flies may need “New flies”' : '';
-  }
-  // the labs swap their best fly now and then
-  if (gen % MIGRATE_EVERY === 0) {
-    const mems = await Promise.all(workers.map((w, lab) => call(w, { type: 'export', fly: results[lab].stat.bestFly })));
-    await Promise.all(workers.map((w, lab) => {
-      const from = mems[(lab + LABS - 1) % LABS];
-      const mem = from.mem.slice();
-      return call(w, { type: 'import', mem, baseline: from.baseline }, [mem.buffer]);
-    }));
-  }
-  genTimes.push(performance.now() - t0);
-  if (genTimes.length > 10) genTimes.shift();
-  updateStats(best, sum / n, solved);
+  if (runner.firstSolved < 0 && runner.history.length > 120) $('milestone').textContent = runner.stuck ? 'stuck for a while: these flies may need “New flies”' : '';
+  updateStats(best, mean, solved);
   await showChampion(best);
   drawChart();
-  if (SAVE_EVERY && gen % SAVE_EVERY === 0) await saveState();
+  if (SAVE_EVERY && runner.gen % SAVE_EVERY === 0) await runner.save('/state/demo', { banner: $('banner').innerHTML });
   busy = false;
 }
 
 function updateStats(best, mean, solved) {
-  $('st-gen').textContent = gen.toLocaleString();
+  $('st-gen').textContent = runner.gen.toLocaleString();
   $('st-best').textContent = `${best.score.toFixed(2)} / 8`;
   $('st-mean').textContent = mean.toFixed(2);
   $('st-solved').textContent = solved.toLocaleString();
-  $('st-programs').textContent = programs.toLocaleString();
-  $('st-tokens').textContent = tokensTyped >= 1e6 ? `${(tokensTyped / 1e6).toFixed(1)} M` : tokensTyped.toLocaleString();
-  const avg = genTimes.reduce((a, b) => a + b, 0) / genTimes.length;
-  $('st-speed').textContent = `${(1000 / avg).toFixed(1)} gen/s`;
+  $('st-programs').textContent = runner.programs.toLocaleString();
+  const t = runner.tokensTyped;
+  $('st-tokens').textContent = t >= 1e6 ? `${(t / 1e6).toFixed(1)} M` : t.toLocaleString();
+  $('st-speed').textContent = `${runner.speed.toFixed(1)} gen/s`;
 }
 
 async function showChampion(best) {
   let fly = best;
   if (selected) {
     const [lab, f] = selected;
-    const m = await call(workers[lab], { type: 'code', fly: f });
+    const m = await runner.code(lab, f);
     fly = { ...m, lab, fly: f };
     $('champ-title').textContent = `Lab ${lab + 1}, fly ${f + 1}`;
     $('champ-note').innerHTML = `<a href="#" id="follow-best">follow the best fly</a>`;
@@ -257,6 +163,7 @@ function drawChart() {
     g.beginPath(); g.moveTo(L, y); g.lineTo(w - R, y); g.stroke();
     g.fillText(String(v), 8, y + 3);
   }
+  const history = runner.history;
   if (!history.length) return;
   const n = Math.max(history.length, 50);
   const X = (i) => L + (i / (n - 1)) * iw;
@@ -275,7 +182,7 @@ function drawChart() {
 }
 
 // ---------------------------------------------------------------- run loop and controls
-function setRunLabel() { $('btn-run').textContent = running ? 'Pause' : gen ? 'Keep training' : 'Start training'; }
+function setRunLabel() { $('btn-run').textContent = running ? 'Pause' : runner.gen ? 'Keep training' : 'Start training'; }
 async function loop() {
   while (running) {
     await step();
@@ -296,9 +203,9 @@ $('wall').addEventListener('mousemove', (e) => {
   if (!wall) return;
   const r = e.target.getBoundingClientRect();
   const hit = wall.cellAt(e.clientX - r.left, e.clientY - r.top);
-  if (!hit || !lastResults.length) { tip.classList.add('hidden'); return; }
+  if (!hit || !runner.lastResults.length) { tip.classList.add('hidden'); return; }
   const [lab, f] = hit;
-  const score = lastResults[lab].scores[f];
+  const score = runner.lastResults[lab].scores[f];
   tip.textContent = `Lab ${lab + 1} · fly ${f + 1} · ${score.toFixed(2)} / 8 · click to inspect`;
   tip.style.left = `${e.clientX - r.left + 26}px`;
   tip.style.top = `${e.clientY - r.top + 52}px`;
@@ -306,7 +213,7 @@ $('wall').addEventListener('mousemove', (e) => {
 });
 $('wall').addEventListener('mouseleave', () => tip.classList.add('hidden'));
 $('wall').addEventListener('click', async (e) => {
-  if (!wall || !lastResults.length) return;
+  if (!wall || !runner.lastResults.length) return;
   const r = e.target.getBoundingClientRect();
   const hit = wall.cellAt(e.clientX - r.left, e.clientY - r.top);
   if (!hit) return;
@@ -320,7 +227,7 @@ $('wall').addEventListener('click', async (e) => {
 addEventListener('resize', () => { if (wall) wall.layout(); drawChart(); });
 
 function frame(t) {
-  if (wall && t - lastFrameAt > 50) { lastFrameAt = t; wall.draw(t / 1000, labStats); }
+  if (wall && t - lastFrameAt > 50) { lastFrameAt = t; wall.draw(t / 1000, runner.labStats); }
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -328,9 +235,15 @@ requestAnimationFrame(frame);
 setup()
   .then(async () => {
     if (!DEMO) return;
-    const resumed = RESUME && (await loadState());
-    fetch(`/ping?${resumed ? 'resumed' : 'started'}=${gen}`).catch(() => {});   // marks the moment in the server log
-    setTimeout(() => { running = true; setRunLabel(); loop(); }, resumed ? 0 : 1500);
+    const saved = RESUME ? await runner.load('/state/demo') : null;
+    if (saved) {
+      if (saved.banner) { $('banner').innerHTML = saved.banner; $('banner').classList.add('show'); }
+      if (runner.firstSolved > 0) $('milestone').textContent = `first perfect döner: generation ${runner.firstSolved}`;
+      $('st-gen').textContent = runner.gen.toLocaleString();
+      drawChart();
+    }
+    fetch(`/ping?${saved ? 'resumed' : 'started'}=${runner.gen}`).catch(() => {});   // marks the moment in the server log
+    setTimeout(() => { running = true; setRunLabel(); loop(); }, saved ? 0 : 1500);
   })
   .catch((err) => { $('code-note').textContent = `Could not start: ${err.message}`; console.error(err); });
-window.__gym = { get gen() { return gen; }, get history() { return history; }, get firstSolved() { return firstSolved; } };
+window.__gym = { get gen() { return runner.gen; }, get history() { return runner.history; }, get firstSolved() { return runner.firstSolved; } };

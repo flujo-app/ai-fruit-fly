@@ -1,8 +1,11 @@
 """Serve the AI fruit fly locally:  python serve.py   then open http://127.0.0.1:8765
 
-Besides the files, the server keeps one thing for the Fly Gym demo: a saved training state
-(POST /state/<name>, GET /state/<name>), stored in the .state folder, so a long training run can
-be continued after a page reload. It only listens on 127.0.0.1.
+Besides the files, the server keeps two things:
+- a saved Fly Gym training state (POST /state/<name>, GET /state/<name>) in the .state folder, so a
+  long training run can be continued after a page reload;
+- videos recorded by the Cubicles page (POST /recording/<name>?part=N appends one piece,
+  ?done=1 finishes it) in the recordings folder.
+It only listens on 127.0.0.1.
 """
 import http.server
 import os
@@ -14,6 +17,7 @@ import urllib.parse
 PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8765
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_DIR = os.path.join(HERE, ".state")
+REC_DIR = os.path.join(HERE, "recordings")
 os.chdir(HERE)
 
 
@@ -56,6 +60,23 @@ class Handler(http.server.SimpleHTTPRequestHandler):
         super().do_GET()
 
     def do_POST(self):
+        url = urllib.parse.urlparse(self.path)
+        m = re.fullmatch(r"/recording/([\w-]{1,80})", url.path)
+        if m:
+            data = self.rfile.read(int(self.headers.get("Content-Length", 0)))
+            os.makedirs(REC_DIR, exist_ok=True)
+            out = os.path.join(REC_DIR, m.group(1) + ".webm")
+            q = urllib.parse.parse_qs(url.query)
+            if q.get("part") == ["0"] and os.path.exists(out):
+                os.remove(out)   # a new recording with the same name starts over
+            if data:
+                with open(out, "ab") as f:
+                    f.write(data)
+            if "done" in q:
+                print(f"RECORDING done {out} {os.path.getsize(out) if os.path.exists(out) else 0} bytes at {time.time():.3f}", flush=True)
+            self.send_response(204)
+            self.end_headers()
+            return
         path, query = self._state_file()
         if not path:
             self.send_error(404)
