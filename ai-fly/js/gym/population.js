@@ -40,6 +40,9 @@ export const DEFAULTS = {
   mutation: 0,         // random variation added to a memory when it is copied (0 = none)
   focus: 0,            // 1: the first attempt each round is written at full concentration (best guess)
   focusTemperature: 0.002,
+  gapScale: 0.25,         // a score gap this big between two attempts gives full-strength sugar and bitter
+  explore: 0.03,          // curiosity: chance that a decision is a random token instead of the favourite
+  contrast: 1,         // 1: sugar/bitter only for the choices where the best and worst attempt differ
 };
 
 export class FlyPopulation {
@@ -71,8 +74,10 @@ export class FlyPopulation {
   }
 
   write(f, T = this.o.temperature) {
-    const ki = this.g.keyIndex;
+    const ki = this.g.keyIndex, explore = this.o.explore;
     return writeProgram((line, state, opts) => {
+      // curiosity: now and then a fly just tries something random
+      if (explore > 0 && Math.random() < explore) return Math.floor(Math.random() * opts.length);
       const vals = opts.map((t) => this.valence(f, ki.get(comboKey(line, state, t))));
       const m = Math.max(...vals);
       const ex = vals.map((v) => Math.exp((v - m) / T));
@@ -140,8 +145,16 @@ export class FlyPopulation {
       for (let f = 0; f < n; f++) {
         const gap = this.bestAttempt[f].r.score - worst[f].r.score;
         if (gap > 0.01) {
-          this.learn(f, this.bestAttempt[f].p.decisions, 'sugar', o.sugar * Math.min(1, gap));
-          this.learn(f, worst[f].p.decisions, 'bitter', o.bitter * Math.min(1, gap));
+          let good = this.bestAttempt[f].p.decisions, bad = worst[f].p.decisions;
+          if (o.contrast) {
+            // only the choices that differ between the two attempts made the difference
+            const key = (d) => d.join('|');
+            const inGood = new Set(good.map(key)), inBad = new Set(bad.map(key));
+            good = good.filter((d) => !inBad.has(key(d)));
+            bad = bad.filter((d) => !inGood.has(key(d)));
+          }
+          this.learn(f, good, 'sugar', o.sugar * Math.min(1, gap / o.gapScale));
+          this.learn(f, bad, 'bitter', o.bitter * Math.min(1, gap / o.gapScale));
         }
         this.baseline[f] = this.gen === 0 ? this.score[f] : 0.8 * this.baseline[f] + 0.2 * this.score[f];
       }

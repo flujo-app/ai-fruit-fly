@@ -70,6 +70,15 @@ self.onmessage = async (e) => {
       pop.W.set(m.mem, worst * 2 * pop.K);
       pop.baseline[worst] = m.baseline;
       postMessage({ type: 'imported', id: m.id, fly: worst });
+    } else if (m.type === 'exportAll') {
+      // the whole lab's memories, for saving a training run
+      const W = pop.W.slice(), baseline = pop.baseline.slice();
+      postMessage({ type: 'all', id: m.id, W, baseline, gen: pop.gen }, [W.buffer, baseline.buffer]);
+    } else if (m.type === 'importAll') {
+      pop.W.set(m.W);
+      pop.baseline.set(m.baseline);
+      pop.gen = m.gen;
+      postMessage({ type: 'imported', id: m.id });
     }
   } catch (err) {
     postMessage({ type: 'error', id: m.id, message: String(err && err.stack || err) });

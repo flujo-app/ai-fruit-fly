@@ -55,7 +55,7 @@ this simple model to fire, so the fly's liking is read from how hard its learnin
 
 Add `?demo` to the address (`fly-gym.html?demo`) and training starts by itself, then stops 40
 rounds after the first perfect döner. That's handy for recordings. A recorded run is in
-`../media/fly-gym-demo.mp4`, and the winning program is in `examples/doener-by-1024-flies.html`.
+`../media/fly-gym-demo.mp4`, and the winning program is in `examples/first-try-glowing-ball.html`.
 
 Here the flies get no ready-made code blocks. They type a three.js program **one token at a time**:
 keywords, names, numbers, colours and symbols. Open <http://127.0.0.1:8765/fly-gym.html> and press
@@ -84,6 +84,20 @@ keywords, names, numbers, colours and symbols. Open <http://127.0.0.1:8765/fly-g
   1. Each fly compares its own attempts, which gives a much clearer signal than one attempt per round.
   2. Smells are about objects instead of line numbers, so inserting a line doesn't scramble the memory.
   3. The customer gives partial credit, for example for "almost a spit" or "the grill moved part of the way".
+
+**The loophole, and the pickier customer.** The first customer only checked a list of facts: a
+brown cone exists, something glows near it, something bread-coloured is lower, and so on. The flies
+passed all 8 tests with a giant glowing ball that swallowed half of a green-glowing, needle-pointed
+cone, standing on a huge "bread tent" (`examples/first-try-glowing-ball.html`). Nothing in the tests
+forbade it. That's a classic case of a learner exploiting the gaps in its reward. The customer now
+also checks what a döner looks like:
+- nothing big may hide the döner;
+- the meat must not glow, must be the biggest thing in the shop, and must not end in a needle point;
+- the spit must stick out at the top;
+- the grill must stand behind the meat without touching it, at a sensible size;
+- the bread must be bread-sized and right under the meat.
+
+Run `node tools/test_judge.mjs` to check that a proper döner passes and the glowing ball fails.
 
 **Hand-made:** the token rules, the numbers and colours on offer, the `knife()` helper and the 8
 tests. **Real:** the learning-centre wiring and how dopamine changes it. Every token in the winning
