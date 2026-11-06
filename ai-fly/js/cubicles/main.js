@@ -9,6 +9,7 @@ import { Workers, NearDesk } from './flies.js';
 import { Supervisor, BUTTONS } from './supervisor.js';
 import { Player, EYE } from './player.js';
 import { Party } from './party.js';
+import { WinnerShow } from './winner-show.js';
 import { Hud } from './hud.js';
 import { Recorder, FrameRecorder } from './recorder.js';
 import { clock, wait } from './clock.js';
@@ -49,6 +50,7 @@ const grid = buildGrid(LABS, PER_LAB);
 const player = new Player(camera, canvas, grid);
 player.setPose(START.x, START.z, START.yaw, 0.17);
 const party = new Party(scene, office, workers, grid);
+const show = new WinnerShow();   // the winner's döner app, running
 const hud = new Hud();
 // ?autopilot&record: frame by frame (smooth on any machine); otherwise REC records in real time
 const FRAMES = P.has('autopilot') && P.has('record') && FrameRecorder.supported;
@@ -136,6 +138,7 @@ async function newFlies(reason = '') {
   speed = 'pause';
   while (looping) await sleep(30);
   party.endParty();
+  show.stop(); show.setWinner(null); caption('');
   banner = reason; last = null;
   await runner.init(PER_LAB);
   office.drawAtlas([], 0);
@@ -200,8 +203,10 @@ function startParty(best) {
   setSpeed('1');
   party.start(best.lab, best.fly, `FLY ${best.fly + 1} · LAB ${best.lab + 1} · 8/8`);
   party.desk.setCode({ tokens: best.tokens, score: best.score, passed: best.passed, label: `Lab ${best.lab + 1} · fly ${best.fly + 1} · PERFECT` }, clock.now(), 0);
+  show.setWinner({ code: best.code, tokens: best.tokens, score: best.score, passed: best.passed, part: best.part, fly: best.fly, lab: best.lab });
   hud.toast(`Generation ${runner.gen}: ${name} typed a döner app that passes all 8 tests!`, 8);
   hud.toast('Speed is back to 1×. Follow the arrows on the floor to the winner.', 8);
+  if (!AUTOPILOT) hud.toast('Press 3 any time to see its döner app running.', 8);
   fetch(`/ping?solved=${runner.gen}`).catch(() => {});
   assignNear();
 }
@@ -278,7 +283,14 @@ addEventListener('keydown', (e) => {
   const close = party.active && party.distance(player.x, player.z) < 6;
   if (e.code === 'Digit1' && close) giveSugar();
   if (e.code === 'Digit2' && close) offerContract();
+  if (e.code === 'Digit3') toggleShow();
 });
+
+// key 3: the winner's döner app, running (and back)
+function toggleShow() {
+  if (show.active) { show.end(clock.now(), 400); caption(''); return; }
+  if (show.start(clock.now())) caption(`Fly ${show.winner.fly + 1}'s döner app, running in real three.js · 3 to go back`);
+}
 
 async function toggleRecording() {
   if (recorder.active) {
@@ -391,6 +403,14 @@ async function autopilot() {
     caption(`Fly ${party.fly + 1}, Head of Döner. Its memory now trains flies in all 8 teams`);
     await wait(7000);
   }
+  // the last shot: what the winner typed, running as a real three.js app
+  if (show.start(clock.now())) {
+    caption(`Fly ${show.winner.fly + 1}'s döner app, running in real three.js`);
+    await wait(14000);
+    caption('');
+    show.end(clock.now(), 1000);
+    await wait(1100);
+  }
   caption('');
   if (recorder.active) await toggleRecording();
   document.title = 'Cubicles (done)';
@@ -435,7 +455,8 @@ function frame() {
   const real = performance.now();
   if (real - fpsAt > 1000) { fps = frames; frames = 0; fpsAt = real; window.__cubicles.fps = fps; }
   renderer.clear();
-  if (!OFF.has('render')) renderer.render(scene, camera);
+  if (show.active) show.render(renderer, dt, now);
+  if (!show.active && !OFF.has('render')) renderer.render(scene, camera);
   renderer.clearDepth();
   if (!OFF.has('hud')) hud.render(renderer, now);
   if (recorder.capture && recorder.active) recorder.capture();
@@ -443,7 +464,7 @@ function frame() {
 }
 
 // ---------------------------------------------------------------- start
-window.__cubicles = { runner, party, player, renderer, get speed() { return speed; }, fps: 0, setSpeed, newFlies, offerContract, giveSugar };
+window.__cubicles = { runner, party, player, renderer, show, get speed() { return speed; }, fps: 0, setSpeed, newFlies, offerContract, giveSugar };
 office.drawAtlas([], 0);
 drawScreen();
 requestAnimationFrame(frame);
