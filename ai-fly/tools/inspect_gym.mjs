@@ -7,8 +7,8 @@ import { parseGym, FlyPopulation } from '../js/gym/population.js';
 import { judge } from '../js/gym/judge.js';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const raw = readFileSync(join(root, 'data/gym.bin'));
-const gym = parseGym(raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength), JSON.parse(readFileSync(join(root, 'data/gym.json'), 'utf8')));
+const raw = readFileSync(join(root, `data/${process.env.GYM_DATA || 'gym'}.bin`));
+const gym = parseGym(raw.buffer.slice(raw.byteOffset, raw.byteOffset + raw.byteLength), JSON.parse(readFileSync(join(root, `data/${process.env.GYM_DATA || 'gym'}.json`), 'utf8')));
 const n = Number(process.argv[2] || 512), gens = Number(process.argv[3] || 200);
 const opts = Object.fromEntries(process.argv.slice(4).map((a) => a.split('=')).map(([k, v]) => [k, Number(v)]));
 const pop = new FlyPopulation(gym, n, opts);

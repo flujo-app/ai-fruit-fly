@@ -28,10 +28,14 @@ function hashPick(str, n, pool) {
   }
   return out;
 }
-// 2 glomeruli for the line, 2 for the kind of blank, 5 for the token
+// 2 glomeruli for where the fly is (line or object), 2 for the kind of blank, 5 for the token. For
+// decisions about an object, the blank and the token are smelled together with the object, so
+// "height 2" smells different for the döner and for the bread (otherwise learning "the döner must be
+// tall" also makes the bread tall).
 export function smellOf(key, glomNames) {
-  const [line, state, token] = key.split('|');
-  return [...new Set([...hashPick(`ctx:${line}`, 2, glomNames), ...hashPick(`state:${state}`, 2, glomNames), ...hashPick(`token:${token}`, 5, glomNames)])];
+  const [where, state, token] = key.split('|');
+  const tag = where.startsWith('L') ? '' : `${where}:`;
+  return [...new Set([...hashPick(`ctx:${where}`, 2, glomNames), ...hashPick(`state:${tag}${state}`, 2, glomNames), ...hashPick(`token:${tag}${token}`, 5, glomNames)])];
 }
 
 if (isMainThread) {
@@ -75,8 +79,8 @@ if (isMainThread) {
   const buf = Buffer.alloc(size + 8);
   let p = 0;
   for (const part of parts) { Buffer.from(part.buffer, part.byteOffset, part.byteLength).copy(buf, p); p += part.byteLength; p = (p + 3) & ~3; }
-  writeFileSync(join(root, 'data/gym.bin'), buf.subarray(0, p));
-  writeFileSync(join(root, 'data/gym.json'), JSON.stringify({ version: 1, keys: combos, kcs: nKC }));
+  writeFileSync(join(root, `data/${process.env.GYM_DATA || 'gym'}.bin`), buf.subarray(0, p));
+  writeFileSync(join(root, `data/${process.env.GYM_DATA || 'gym'}.json`), JSON.stringify({ version: 1, keys: combos, kcs: nKC }));
   const avg = total / combos.length;
   console.log(`${combos.length} smells, ${avg.toFixed(0)} Kenyon cells each on average (${(100 * avg / nKC).toFixed(1)}%), ${((performance.now() - t0) / 1000).toFixed(1)} s on ${n} cores, ${(p / 1024).toFixed(0)} KB`);
 } else {

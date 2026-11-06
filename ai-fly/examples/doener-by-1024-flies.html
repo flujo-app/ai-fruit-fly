@@ -2,7 +2,7 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<title>Döner app typed by 1,024 fruit fly brains (Fly Gym, generation 350)</title>
+<title>Döner – typed by a fruit fly</title>
 <style>html,body{margin:0;height:100%;overflow:hidden;background:#1d1712}canvas{display:block}</style>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js"}}</script>
 </head>
@@ -15,62 +15,91 @@ scene.background = new THREE.Color(0x1d1712);
 const camera = new THREE.PerspectiveCamera(38, innerWidth / innerHeight, 0.1, 100);
 // add ?side to the address for a view from the side (shows what is behind the döner)
 const side = new URLSearchParams(location.search).has('side');
-camera.position.set(side ? 7.2 : 2.4, side ? 2.4 : 1.6, side ? 3.4 : 7.6);
-camera.lookAt(0, -0.4, side ? -0.8 : 0);
+camera.position.set(side ? 7.4 : 2.6, side ? 2.3 : 1.5, side ? 4.4 : 8.8);
+camera.lookAt(0, -0.2, side ? -0.4 : 0);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setPixelRatio(devicePixelRatio);
 renderer.setSize(innerWidth, innerHeight);
 document.body.appendChild(renderer.domElement);
-const counter = new THREE.Mesh(new THREE.BoxGeometry(9, 0.3, 4.5), new THREE.MeshStandardMaterial({ color: 0x8d9297, metalness: 0.6, roughness: 0.4 }));
-counter.position.y = -2.45;
+const COUNTER_TOP = -2.1, SLICE = {"from":0.1,"to":0.8,"side":0.35,"push":0.35,"gravity":4};
+const counter = new THREE.Mesh(new THREE.BoxGeometry(9, 0.3, 5), new THREE.MeshStandardMaterial({ color: 0x8d9297, metalness: 0.6, roughness: 0.4 }));
+counter.position.y = COUNTER_TOP - 0.15;
 scene.add(counter);
 scene.add(new THREE.AmbientLight(0xffffff, 0.06));   // a faint glow so a dark shop is not fully black
 const knifeTargets = [];
-const knife = (mesh) => knifeTargets.push(mesh);
+const knife = (mesh) => { if (!knifeTargets.includes(mesh)) knifeTargets.push(mesh); };
 let spin = () => {};
 
 // ---------------- written by the fly ----------------
+const m1 = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 0.3, 2), new THREE.MeshStandardMaterial({ color: 0x8b4513 })); scene.add(m1);
+knife(m1);
+const m2 = new THREE.Mesh(new THREE.CylinderGeometry(0.5, 1.5, 0.2), new THREE.MeshStandardMaterial({ color: 0xf5deb3 })); scene.add(m2);
+knife(m1);
+m2.position.set(0, -2, 0.5);
+const m3 = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshStandardMaterial({ color: 0xff5500, emissive: 0xff5500 })); scene.add(m3);
 scene.add(new THREE.AmbientLight(0xf5deb3, 2));
-scene.add(new THREE.AmbientLight(0xf5deb3, 2));
-const m1 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 3), new THREE.MeshStandardMaterial({ color: 0x8b4513, emissive: 0xff5500 })); scene.add(m1);
-const m2 = new THREE.Mesh(new THREE.SphereGeometry(0.5), new THREE.MeshStandardMaterial({ color: 0xf5deb3, emissive: 0xff5500 })); scene.add(m2);
-knife(m2);
-const m3 = new THREE.Mesh(new THREE.CylinderGeometry(2, 1.5, 2), new THREE.MeshStandardMaterial({ color: 0x8b4513 })); scene.add(m3);
-spin = (dt) => { m3.rotation.y += dt * 1; };
-knife(m3);
-scene.add(m2);
-const m4 = new THREE.Mesh(new THREE.BoxGeometry(1, 1, 2), new THREE.MeshStandardMaterial({ color: 0xf5deb3 })); scene.add(m4);
-m2.position.set(0, 0, -3);
-m4.position.set(0, -2.5, 0);
-m4.position.set(0, -2.5, 0);
+m3.position.set(0, 0, -2);
+const m4 = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 3), new THREE.MeshStandardMaterial({ color: 0xff5500 })); scene.add(m4);
+spin = (dt) => { m1.rotation.y += dt * 2; };
+spin = (dt) => { m1.rotation.y += dt * 2; };
+knife(m1);
+const m5 = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 3, 1), new THREE.MeshStandardMaterial({ color: 0xf5deb3, emissive: 0x222222 }));
+spin = (dt) => { m1.rotation.y += dt * 2; };
 // ----------------------------------------------------
 
+// The knife cuts thin slices off the side that faces the customer. Each slice gets a small push away
+// from the meat, falls, and stays on the first thing it lands on (the bread, if it is in the right place).
 const slices = [];
-const sliceGeo = new THREE.BoxGeometry(0.18, 0.03, 0.12);
+const sliceGeo = new THREE.BoxGeometry(0.2, 0.025, 0.13);
+const down = new THREE.Vector3(0, -1, 0), ray = new THREE.Raycaster();
 let sliceTimer = 0;
+function cut(t) {
+  const p = t.geometry.parameters, g = t.geometry.type;
+  const h = p.height ?? (p.radius ?? 0.5) * 2;
+  const f = SLICE.from + Math.random() * (SLICE.to - SLICE.from);
+  const r = g === 'CylinderGeometry' ? p.radiusBottom + (p.radiusTop - p.radiusBottom) * f
+    : g === 'SphereGeometry' ? p.radius * Math.sqrt(Math.max(0, 1 - (2 * f - 1) ** 2)) : p.depth / 2;
+  const s = new THREE.Mesh(sliceGeo, t.material);
+  const y = t.position.y - h / 2 + f * h;
+  if (g === 'BoxGeometry') {
+    s.position.set(t.position.x + (Math.random() * 2 - 1) * SLICE.side * p.width / 2, y, t.position.z + r + 0.04);
+    s.userData.v = new THREE.Vector3(0, 0, SLICE.push);
+  } else {
+    const a = (Math.random() * 2 - 1) * SLICE.side * r, c = Math.sqrt(Math.max(0, r * r - a * a));
+    s.position.set(t.position.x + a, y, t.position.z + c + 0.04);
+    s.userData.v = r ? new THREE.Vector3(SLICE.push * a / r, 0, SLICE.push * c / r) : new THREE.Vector3(0, 0, SLICE.push);
+  }
+  s.rotation.y = Math.random() * Math.PI;
+  s.userData.slice = true;
+  scene.add(s);
+  slices.push(s);
+}
 function shave(dt) {
   sliceTimer += dt;
-  if (sliceTimer > 0.14 && knifeTargets.length) {
+  if (sliceTimer > 0.12 && knifeTargets.length) {
     sliceTimer = 0;
-    for (const t of knifeTargets) {
-      if (!t.parent) continue;
-      const p = t.geometry.parameters;
-      const h = p.height ?? (p.radius ?? 1) * 2;
-      const r = Math.max(p.radiusTop ?? 0, p.radiusBottom ?? 0, p.radius ?? 0, (p.width ?? 0) / 2, (p.depth ?? 0) / 2);
-      const s = new THREE.Mesh(sliceGeo, t.material);
-      s.position.set(t.position.x + (Math.random() - 0.5) * 0.4, t.position.y + (Math.random() - 0.3) * h * 0.6, t.position.z + r + 0.05);
-      s.userData.v = new THREE.Vector3((Math.random() - 0.5) * 0.4, -0.2, 0.25);
-      scene.add(s);
-      slices.push(s);
-    }
+    for (const t of knifeTargets) if (t.parent) cut(t);
   }
+  const solids = scene.children.filter((o) => o.isMesh && !o.userData.slice);
   for (const s of slices) {
-    s.userData.v.y -= 4 * dt;
-    s.position.addScaledVector(s.userData.v, dt);
-    s.rotation.x += dt * 3;
-    if (s.position.y < -2.28) { s.position.y = -2.28; s.userData.v.set(0, 0, 0); }
+    const v = s.userData.v;
+    if (!v) continue;   // already landed
+    v.y -= SLICE.gravity * dt;
+    const step = -v.y * dt;
+    ray.set(s.position, down);
+    ray.far = step + 0.02;
+    const hit = ray.intersectObjects(solids, false)[0];
+    if (hit) {
+      s.position.set(s.position.x, hit.point.y + 0.013 + Math.random() * 0.01, s.position.z);
+      s.rotation.x = s.rotation.z = 0;
+      s.userData.v = null;
+      continue;
+    }
+    s.position.addScaledVector(v, dt);
+    s.rotation.x += dt * 4;
+    if (s.position.y < COUNTER_TOP - 3) s.userData.v = null;
   }
-  while (slices.length > 80) scene.remove(slices.shift());
+  while (slices.length > 160) scene.remove(slices.shift());
 }
 
 const clock = new THREE.Clock();

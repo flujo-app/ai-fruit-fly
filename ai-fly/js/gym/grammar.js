@@ -15,7 +15,9 @@ export const COLORS = {
 };
 const HEX = Object.keys(COLORS);
 const IDS = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
-const SIZES = ['0.05', '0.2', '0.5', '1', '1.5', '2', '3'];
+const SIZES = ['0.05', '0.2', '0.3', '0.5', '1', '1.5', '2', '3', '4'];
+// a cylinder may get a 4th number: how many corners it has around (3 = a triangle, like a Fladenbrot)
+const CORNERS = ['3', '4', '6', '8'];
 const POS = ['0', '0.5', '1', '1.5', '2', '-0.5', '-1', '-1.5', '-2', '-2.5', '-3'];
 const INTENSITY = ['0.2', '0.5', '1', '2', '3'];
 const SPEEDS = ['0.1', '0.5', '1', '2', '5', '20'];
@@ -34,6 +36,7 @@ export const LINE_STATES = {
 export const OBJECT_STATES = {
   geo: Object.keys(GEOS),
   box1: SIZES, box2: SIZES, box3: SIZES, cyl1: SIZES, cyl2: SIZES, cyl3: SIZES, sph1: SIZES,
+  cylEnd: [')', ','], corners: CORNERS,
   color: HEX, matEnd: ['}', ','], emissive: HEX, addNow: ['scene', NEWLINE],
   posX: POS, posY: POS, posZ: POS,
   axis: ['x', 'y', 'z'], spinNum: SPEEDS,
@@ -74,7 +77,9 @@ export function writeProgram(choose) {
       const geo = pick(id, 'geo', Object.keys(GEOS));
       emit('(');
       GEOS[geo].forEach((st, i) => { if (i) emit(','); pick(id, st, SIZES); });
-      emit(')', ',', 'new', 'THREE', '.', 'MeshStandardMaterial', '(', '{', 'color', ':');
+      if (geo !== 'CylinderGeometry') emit(')');
+      else if (pick(id, 'cylEnd', [')', ',']) === ',') { pick(id, 'corners', CORNERS); emit(')'); }
+      emit(',', 'new', 'THREE', '.', 'MeshStandardMaterial', '(', '{', 'color', ':');
       pick(id, 'color', HEX);
       if (pick(id, 'matEnd', ['}', ',']) === ',') {
         emit('emissive', ':');
