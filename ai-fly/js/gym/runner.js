@@ -48,12 +48,14 @@ export class GymRunner {
     return w;
   }
 
-  // (re)start with fresh flies
+  // (re)start with fresh flies. The lab workers stay; each one just gets a new population.
   async init(perLab = this.perLab) {
-    this.terminate();
+    if (this.workers.length !== this.labs) {
+      this.terminate();
+      this.workers = Array.from({ length: this.labs }, () => this.makeWorker());
+    }
     this.perLab = perLab;
     this.reset();
-    this.workers = Array.from({ length: this.labs }, () => this.makeWorker());
     await Promise.all(this.workers.map((w, lab) => this.call(w, { type: 'init', lab, flies: perLab, opts: { attempts: this.attempts, ...this.popOpts } })));
   }
 

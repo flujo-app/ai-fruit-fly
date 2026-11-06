@@ -5,6 +5,7 @@
 import * as THREE from 'three';
 import { NearDesk, SEAT } from './flies.js';
 import { floorHeight, makeField, pathFrom, cubicle } from './layout.js';
+import { clock, wait } from './clock.js';
 
 const tmpV = new THREE.Vector3();
 
@@ -102,7 +103,7 @@ export class Party {
     this.desk.assign(i);
     this.desk.group.visible = true;
     this.desk.mode = 'type';
-    this.t0 = performance.now() / 1000;
+    this.t0 = clock.now() / 1000;
     this.beam.position.set(this.c.x, 1.6 + 14, this.c.z);   // starts above the cubicle walls
     this.beam.visible = true;
     this.burstAt = 0;
@@ -225,10 +226,10 @@ export class Party {
   // throw something from the visitor to the fly
   toss(obj, from, ms = 900) {
     const start = from.clone(), end = this.headPosition(new THREE.Vector3()).add(new THREE.Vector3(0, 0.05, 0));
-    const t0 = performance.now();
+    const t0 = clock.now();
     return new Promise((resolve) => {
       const tick = () => {
-        const k = Math.min(1, (performance.now() - t0) / ms);
+        const k = Math.min(1, (clock.now() - t0) / ms);
         obj.position.lerpVectors(start, end, k);
         obj.position.y += Math.sin(Math.PI * k) * 0.6;
         obj.rotation.x += 0.15; obj.rotation.z += 0.1;
@@ -251,7 +252,7 @@ export class Party {
     this.desk.mode = 'feed';
     const h = this.headPosition(new THREE.Vector3());
     this.burst(90, h.x, h.y + 0.2, h.z, 2.2);
-    await new Promise((r) => setTimeout(r, 2600));
+    await wait(2600);
     this.desk.proboscis = 0;
     this.busy = false;
     return true;
@@ -275,7 +276,7 @@ export class Party {
     await this.toss(this.paper, from);
     this.paper.visible = false;
     this.desk.mode = 'groom';   // "signing"
-    await new Promise((r) => setTimeout(r, 1500));
+    await wait(1500);
     const seat = this.office.mgmtSeats.find((s) => !s.taken) || this.office.mgmtSeats[this.office.mgmtSeats.length - 1];
     seat.taken = true;
     // the fly leaves its desk and flies over the cubicles

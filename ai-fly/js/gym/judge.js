@@ -65,15 +65,103 @@ function frontLight(lights, meat, M) {
   return total;
 }
 
-export function runProgram(code) {
-  const scene = { children: [], add(o) { if (!this.children.includes(o)) this.children.push(o); return this; } };
-  const knives = [];
-  let spin;
+const newScene = () => ({ children: [], add(o) { if (!this.children.includes(o)) this.children.push(o); return this; } });
+
+// The flies' programs follow a small fixed grammar, so they are read and carried out step by step
+// here instead of being compiled. (Compiling thousands of new functions per second is slow, and a
+// browser that is driven by a test tool keeps every compiled function in memory until the page
+// runs out of it.) This only accepts the exact statements the flies can type; anything else, like
+// a hand-written test program, returns null and is compiled as before.
+const TOKEN = /\s*(0x[0-9a-fA-F]+|-?\d+(?:\.\d+)?|[A-Za-z_$][\w$]*|=>|\+=|[(){}.,;:=*])/y;
+const NUMBER = /^(?:0x[0-9a-fA-F]+|-?\d+(?:\.\d+)?)$/;
+const GEOMETRIES = new Set(['BoxGeometry', 'CylinderGeometry', 'SphereGeometry']);
+const LIGHT_TYPES = new Set(['DirectionalLight', 'AmbientLight', 'PointLight']);
+const NOT_THIS = new Error('not a fly program');
+function interpret(code) {
+  const t = [];
+  TOKEN.lastIndex = 0;
+  while (TOKEN.lastIndex < code.length) {
+    const at = TOKEN.lastIndex, m = TOKEN.exec(code);
+    if (m) { t.push(m[1]); continue; }
+    if (/^\s*$/.test(code.slice(at))) break;
+    return null;
+  }
+  let i = 0;
+  const eat = (...want) => { for (const w of want) { if (t[i] !== w) throw NOT_THIS; i++; } };
+  const num = () => { if (!NUMBER.test(t[i] ?? '')) throw NOT_THIS; return Number(t[i++]); };
+  const one = (set) => { if (!set.has(t[i])) throw NOT_THIS; return t[i++]; };
+  const vars = new Map();
+  const mesh = () => { const m = vars.get(t[i]); if (!m) throw NOT_THIS; i++; return m; };
+  const args = () => {   // ( n, n, ... )
+    eat('(');
+    const out = [];
+    while (t[i] !== ')') { if (out.length) eat(','); out.push(num()); }
+    eat(')');
+    return out;
+  };
+  const scene = newScene(), knives = [];
+  let spin = () => {};
   try {
-    const fn = new Function('THREE', 'scene', 'knife', `"use strict";\nlet spin = () => {};\n${code}\nreturn spin;`);
-    spin = fn(MOCK, scene, (m) => knives.push(m));
-  } catch (err) {
-    return { error: String(err.message || err) };
+    while (i < t.length) {
+      const s = t[i++];
+      if (s === 'const') {
+        const id = t[i++];
+        if (!/^m\d+$/.test(id) || vars.has(id)) throw NOT_THIS;
+        eat('=', 'new', 'THREE', '.', 'Mesh', '(', 'new', 'THREE', '.');
+        const geo = new MOCK[one(GEOMETRIES)](...args());
+        eat(',', 'new', 'THREE', '.', 'MeshStandardMaterial', '(', '{');
+        const mat = {};
+        do {
+          const key = one(new Set(['color', 'emissive']));
+          if (key in mat) throw NOT_THIS;
+          eat(':');
+          mat[key] = num();
+        } while (t[i] === ',' && i++);
+        eat('}', ')', ')', ';');
+        vars.set(id, new MOCK.Mesh(geo, new MOCK.MeshStandardMaterial(mat)));
+      } else if (s === 'scene') {
+        eat('.', 'add', '(');
+        if (t[i] === 'new') { eat('new', 'THREE', '.'); scene.add(new MOCK[one(LIGHT_TYPES)](...args())); } else scene.add(mesh());
+        eat(')', ';');
+      } else if (s === 'knife') {
+        eat('(');
+        knives.push(mesh());
+        eat(')', ';');
+      } else if (s === 'spin') {
+        eat('=', '(', 'dt', ')', '=>', '{');
+        const m = mesh();
+        eat('.', 'rotation', '.');
+        const axis = one(new Set(['x', 'y', 'z']));
+        eat('+=', 'dt', '*');
+        const k = num();
+        eat(';', '}', ';');
+        spin = (dt) => { m.rotation[axis] += dt * k; };
+      } else {
+        i--;
+        const m = mesh();
+        eat('.', 'position', '.', 'set');
+        m.position.set(...args());
+        eat(';');
+      }
+    }
+  } catch { return null; }
+  return { scene, knives, spin };
+}
+
+// `compile: true` always compiles the program (the old way; used to check that both agree)
+export function runProgram(code, { compile = false } = {}) {
+  let scene, knives, spin;
+  const fast = compile ? null : interpret(code);
+  if (fast) ({ scene, knives, spin } = fast);
+  else {
+    scene = newScene();
+    knives = [];
+    try {
+      const fn = new Function('THREE', 'scene', 'knife', `"use strict";\nlet spin = () => {};\n${code}\nreturn spin;`);
+      spin = fn(MOCK, scene, (m) => knives.push(m));
+    } catch (err) {
+      return { error: String(err.message || err) };
+    }
   }
   const meshes = scene.children.filter((o) => o.isMesh);
   const before = meshes.map((m) => ({ ...m.rotation }));
@@ -179,8 +267,8 @@ export const TESTS = [
 ];
 
 // Returns { score (0-8, with partial credit), passed (0-8), res: test -> bool, part: test -> 0..1, why }
-export function judge(code) {
-  const w = runProgram(code);
+export function judge(code, opts) {
+  const w = runProgram(code, opts);
   const part = Object.fromEntries(TESTS.map(([k]) => [k, 0]));
   const why = {};
   if (w.error) return { score: 0, passed: 0, res: {}, part, why: { error: w.error }, error: w.error };
