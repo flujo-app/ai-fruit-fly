@@ -10,6 +10,25 @@ import { part, SCREEN_POS, SCREEN_SIZE } from './office.js';
 
 // how a fly sits on its chair, in the cubicle's frame (the fly's own frame faces +x, in fly units)
 export const SEAT = { y: 0.508, z: 0.04, pitch: 0.3, scale: 0.33 };
+
+// A fly's program (its first `shown` tokens) as rows of coloured pieces { s, c }, wrapped at `cols`
+// characters: the fly's own choices in amber, colours in their colour, autocomplete in grey.
+export function codeRows(tokens, shown = tokens.length, cols = 66) {
+  const lines = [[]];
+  let col = 0, prev = '\n';
+  const tight = (t) => prev === '\n' || ['.', ')', ',', ';', ':'].includes(t) || prev === '.' || prev === '(' || (t === '(' && /^[A-Za-z_$][\w$]*$/.test(prev));
+  for (let k = 0; k < shown; k++) {
+    const { t, d: chosen } = tokens[k];
+    if (t === '\n') { lines.push([]); col = 0; prev = '\n'; continue; }
+    if (t === 'END' || t === NEWLINE) continue;
+    const txt = (tight(t) ? '' : ' ') + t;
+    if (col + txt.length > cols) { lines.push([]); col = 2; lines[lines.length - 1].push({ s: '  ', c: '#5f6878' }); }
+    lines[lines.length - 1].push({ s: txt, c: chosen ? '#ffb547' : COLORS[t] ? '#' + t.slice(2) : '#9aa4b5' });
+    col += txt.length;
+    prev = t;
+  }
+  return lines;
+}
 function pose(geom) {
   return geom.scale(SEAT.scale, SEAT.scale, SEAT.scale).rotateZ(SEAT.pitch).rotateY(Math.PI / 2).translate(0, SEAT.y, SEAT.z);
 }
@@ -154,20 +173,7 @@ export class NearDesk {
     g.textAlign = 'right'; g.fillText(`${d.score.toFixed(2)} / 8 · ${d.passed}/8 tests`, W - 12, 23); g.textAlign = 'left';
     // the code, wrapped, with the fly's own choices in amber
     g.font = '15px ui-monospace, Consolas, monospace';
-    const lines = [[]];
-    let col = 0, prev = '\n';
-    const tight = (t) => prev === '\n' || ['.', ')', ',', ';', ':'].includes(t) || prev === '.' || prev === '(' || (t === '(' && /^[A-Za-z_$][\w$]*$/.test(prev));
-    for (let k = 0; k < shown; k++) {
-      const { t, d: chosen } = d.tokens[k];
-      if (t === '\n') { lines.push([]); col = 0; prev = '\n'; continue; }
-      if (t === 'END' || t === NEWLINE) continue;
-      const txt = (tight(t) ? '' : ' ') + t;
-      if (col + txt.length > 66) { lines.push([]); col = 2; lines[lines.length - 1].push({ s: '  ', c: '#5f6878' }); }
-      lines[lines.length - 1].push({ s: txt, c: chosen ? '#ffb547' : COLORS[t] ? '#' + t.slice(2) : '#9aa4b5' });
-      col += txt.length;
-      prev = t;
-    }
-    const vis = lines.slice(-19);
+    const vis = codeRows(d.tokens, shown, 66).slice(-19);
     vis.forEach((ln, r) => {
       let x = 12;
       for (const { s, c } of ln) { g.fillStyle = c; g.fillText(s, x, 56 + r * 17); x += g.measureText(s).width; }

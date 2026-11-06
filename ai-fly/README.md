@@ -161,8 +161,8 @@ programs was chosen by a fly.
 The same training as the Fly Gym, as an interactive three.js world. 1,024 flies (8 labs = 8 teams
 of 128) sit at 1,024 desks in an open-plan office. Each one types at its own computer.
 `../media/cubicles-demo.mp4` is one unedited take recorded by the page itself
-(`cubicles.html?autopilot&record&size=1920x1080`, 86 seconds, a smooth 30 frames per second): the
-first perfect döner came in round 143.
+(`cubicles.html?autopilot&record&size=1920x1080`, 83 seconds, a smooth 30 frames per second): the
+first perfect döner came in round 131, and the video ends with the winner's döner app running.
 
 - **Walk around:** WASD (or the arrow keys), Shift to run, the mouse to look (click into the
   view first). You can't walk through cubicles; a ramp leads up to the supervisor deck.
@@ -179,11 +179,17 @@ first perfect döner came in round 143.
   centre) or **2** for a **management contract**: it flies to the glass management office, and its
   memory is copied over the 8 weakest flies of every team (64 flies). A new intern, with a fresh
   memory, takes its desk.
+- **The winner's döner app:** press **3** once a fly has won (press it again to go back). The
+  winner's program runs with the real three.js, in the same shop as the Fly Gym's preview: the meat
+  turns, the knife shaves it and the slices land on the bread, while the camera slowly moves round
+  to the side. Next to it are the program, with the fly's own choices in amber, and the customer's
+  8 tests.
 - **Stuck flies:** if the best score doesn't improve for 300 rounds, 1,024 new flies take the
   desks and the big screen says why.
 - **Options:** `?autostart` starts training at full speed, `?record` records from the start, and
   `?autopilot` lets the camera walk by itself (intro, a tour while they train, the walk to the
-  winner, sugar, contract, the flight to management) and then stops the recording. Use
+  winner, sugar, contract, the flight to management, the winner's döner app) and then stops the
+  recording. Use
   `cubicles.html?autopilot&record&size=1920x1080` for an unattended demo video. `?size=1920x1080`
   always draws (and records) at that size, `?cam=x,z,yaw,pitch,height` places the camera,
   `?testparty` pretends round 20's best fly won (to try the party quickly), `?stuckafter=300`
@@ -239,15 +245,17 @@ result: about 400 neurons become active and the feeding neuron MN9 fires.
 - `doener.html`, `js/doener/`, `js/mushroom-body.js`, `js/mb-worker.js`: the Döner Dev Fly page
 - `fly-gym.html`, `js/gym/`: the Fly Gym (hard mode): the token rules (`grammar.js`), the fast
   three.js stand-in and customer tests (`judge.js`), the fly population (`population.js`), one
-  lab per worker (`gym-worker.js`), the wall of thumbnails (`wall.js`) and the real app template
-  (`app-template.js`)
+  lab per worker (`gym-worker.js`), the wall of thumbnails (`wall.js`), the real app template
+  (`app-template.js`) and the döner shop around every program (`shop.js`: counter, knife, falling
+  slices)
 - `js/gym/runner.js`: the training loop (one worker per lab, swapping best flies), shared by the
   Fly Gym and Cubicles
 - `cubicles.html`, `css/cubicles.css`, `js/cubicles/`: the office: layout, walking and the shortest
   way along the aisles (`layout.js`, `player.js`), the building and the 1,024 cubicles
   (`office.js`), the flies near and far (`flies.js`), the supervisor deck (`supervisor.js`), the
-  winner's party (`party.js`), on-screen text (`hud.js`), recording (`recorder.js`), the office
-  clock for frame-by-frame videos (`clock.js`) and `main.js`
+  winner's party (`party.js`), the winner's döner app (`winner-show.js`), on-screen text
+  (`hud.js`), recording (`recorder.js`), the office clock for frame-by-frame videos (`clock.js`)
+  and `main.js`
 - `data/gym.bin`, `data/gym.json`: precomputed smell fingerprints (`tools/make_fingerprints.mjs`)
 - `tools/train_gym.mjs`: headless Fly Gym training, for experiments
 
