@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Fly Gym</title>
+  <link rel="stylesheet" href="css/gym.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <div class="eyebrow">Hard mode · mass training</div>
+      <h1>Fly Gym</h1>
+      <p>Hundreds of fruit fly learning centres type a three.js döner app <b>one token at a time</b>. No code blocks, just keywords, names, numbers and symbols. A customer rates every program, and the flies learn from sugar and bitter.</p>
+    </div>
+    <div class="controls">
+      <button id="btn-run" class="primary" disabled>Start training</button>
+      <label class="sel">Flies
+        <select id="flies">
+          <option value="32">256</option>
+          <option value="64">512</option>
+          <option value="128" selected>1,024</option>
+        </select>
+      </label>
+      <button id="btn-reset" disabled>New flies</button>
+      <a class="link" href="doener.html">← Easy mode</a>
+    </div>
+  </header>
+
+  <section class="stats">
+    <div><span>Generation</span><b id="st-gen">0</b></div>
+    <div><span>Flies</span><b id="st-flies">–</b></div>
+    <div><span>Best score</span><b id="st-best">–</b></div>
+    <div><span>Average</span><b id="st-mean">–</b></div>
+    <div><span>Perfect döners</span><b id="st-solved">0</b></div>
+    <div><span>Programs written</span><b id="st-programs">0</b></div>
+    <div><span>Tokens typed</span><b id="st-tokens">0</b></div>
+    <div><span>Speed</span><b id="st-speed">–</b></div>
+  </section>
+
+  <main class="grid">
+    <section class="card wall-card">
+      <div class="card-head"><h2>Every fly's current döner shop</h2><span class="muted">front view, drawn from each fly's program · green frame = passes all 8 tests · click a fly to inspect it</span></div>
+      <canvas id="wall"></canvas>
+      <div id="tip" class="tip hidden"></div>
+    </section>
+
+    <section class="side">
+      <div class="card">
+        <div class="card-head"><h2 id="champ-title">Best fly</h2><span class="muted" id="champ-note"></span></div>
+        <iframe id="preview" title="The best fly's döner app, running for real"></iframe>
+        <ul id="tests"></ul>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Progress</h2><span class="muted" id="milestone"></span></div>
+        <canvas id="chart"></canvas>
+        <div class="legend"><i style="--c:#ffb547"></i>best <i style="--c:#a98bff"></i>average <i style="--c:#45d483"></i>share of flies with a perfect döner</div>
+      </div>
+    </section>
+
+    <section class="card code-card">
+      <div class="card-head"><h2>The program, token by token</h2><span class="muted" id="code-note"></span></div>
+      <pre id="code"></pre>
+      <div class="legend"><span class="tk-d">amber</span> = the fly chose this token · <span class="tk-a">grey</span> = the only legal token (autocomplete typed it)</div>
+    </section>
+  </main>
+
+  <footer class="honest">
+    <b>How it works:</b> each fly has its own copy of the real learning centre from the FlyWire map (5,177 Kenyon cells and their connections to the "approach" and "avoid" output neurons).
+    At every spot where more than one token is legal, the fly smells "which object am I describing + which blank + this token" and picks the token it likes most, with some randomness.
+    Each round, every fly writes 4 programs. The best one earns sugar and the worst one bitter, which changes that fly's connections, just as flies learn from food.
+    Each lab copies its best flies' memories over its weakest ones, and the labs swap their best fly every 2 rounds.
+    <b>Hand-made:</b> the token rules (which tokens are legal where), the number and colour choices on offer, the `knife()` helper and the customer's 8 tests with partial credit.
+  </footer>
+
+  <script type="module" src="js/gym/main.js"></script>
+</body>
+</html>
