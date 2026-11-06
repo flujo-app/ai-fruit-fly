@@ -15,7 +15,7 @@ export const COLORS = {
 };
 const HEX = Object.keys(COLORS);
 const IDS = ['m1', 'm2', 'm3', 'm4', 'm5', 'm6'];
-const SIZES = ['0.05', '0.2', '0.5', '1', '1.5', '2', '3', '4'];
+const SIZES = ['0.05', '0.2', '0.3', '0.5', '1', '1.5', '2', '3', '4'];
 // a cylinder may get a 4th number: how many corners it has around (3 = a triangle, like a Fladenbrot)
 const CORNERS = ['3', '4', '6', '8'];
 const POS = ['0', '0.5', '1', '1.5', '2', '-0.5', '-1', '-1.5', '-2', '-2.5', '-3'];

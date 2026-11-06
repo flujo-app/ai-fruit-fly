@@ -34,7 +34,7 @@ counter.position.y = COUNTER_TOP - 0.15;
 scene.add(counter);
 scene.add(new THREE.AmbientLight(0xffffff, 0.06));   // a faint glow so a dark shop is not fully black
 const knifeTargets = [];
-const knife = (mesh) => knifeTargets.push(mesh);
+const knife = (mesh) => { if (!knifeTargets.includes(mesh)) knifeTargets.push(mesh); };
 let spin = () => {};
 
 // ---------------- written by the fly ----------------

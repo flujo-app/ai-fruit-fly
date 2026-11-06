@@ -19,6 +19,10 @@ const fladen = proper.replace('CylinderGeometry(1, 1, 0.05)', 'CylinderGeometry(
 const loaf = proper.replace('CylinderGeometry(1, 1, 0.05)', 'BoxGeometry(1, 0.2, 2)');
 const missed = proper.replace('m4.position.set(0, -2, 1)', 'm4.position.set(1.5, -2, 0)');
 const greedyKnife = proper.replace('knife(m1);', 'knife(m1);\nknife(m3);');
+// a slimmer döner with a shorter spit and a smaller grill also counts; one as thin as a pole does not
+const slimmer = proper.replace('CylinderGeometry(1, 0.5, 3)', 'CylinderGeometry(0.5, 0.3, 2)').replace('CylinderGeometry(0.05, 0.05, 4)', 'CylinderGeometry(0.05, 0.05, 3)')
+  .replace('BoxGeometry(2, 3, 0.2)', 'BoxGeometry(1, 1.5, 0.2)').replace('m4.position.set(0, -2, 1)', 'm4.position.set(0, -2, 0)');
+const pole = proper.replace('CylinderGeometry(1, 0.5, 3)', 'CylinderGeometry(0.5, 0.3, 3)');
 
 // the winner of the first video: wide as a lampshade, a pale ball as the grill (shaved too), a loaf
 const lampshade = `scene.add(new THREE.AmbientLight(0xf5deb3, 2));
@@ -71,7 +75,9 @@ const a = judge(proper);
 check(`proper döner on a dürüm passes all 8 tests (${a.passed}/8, ${a.score.toFixed(2)}) ${fails(a)}`, a.passed === 8);
 const f = judge(fladen);
 check(`proper döner on a Fladenbrot passes all 8 tests (${f.passed}/8, ${f.score.toFixed(2)}) ${fails(f)}`, f.passed === 8);
-for (const [label, code, test] of [['bread loaf', loaf, 'bread'], ['bread off to the side', missed, 'bread'], ['knife on the grill too', greedyKnife, 'shave']]) {
+const sl = judge(slimmer);
+check(`slimmer döner passes all 8 tests (${sl.passed}/8, ${sl.score.toFixed(2)}) ${fails(sl)}`, sl.passed === 8);
+for (const [label, code, test] of [['bread loaf', loaf, 'bread'], ['bread off to the side', missed, 'bread'], ['knife on the grill too', greedyKnife, 'shave'], ['döner as thin as a pole', pole, 'shape']]) {
   const r = judge(code);
   check(`${label} fails "${test}" (${r.passed}/8): ${r.why[test]}`, !r.res[test] && r.passed === 7);
 }

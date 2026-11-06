@@ -97,8 +97,9 @@ const isBrown = ({ h, s, l }) => h >= 0.02 && h <= 0.12 && s >= 0.35 && l >= 0.1
 const isBread = ({ h, s, l }) => h >= 0.06 && h <= 0.16 && s >= 0.3 && l >= 0.55;
 const warmGlow = (c) => c.r >= 0.6 && c.r > 1.5 * c.b;
 const glows = (c) => Math.max(c.r, c.g, c.b) >= 0.15;
-// a grill is a flat panel (not a ball or a stick), dark enough to glow orange instead of pale like a lamp
-const isPanel = (g) => { const p = g.geometry.parameters; return g.geometry.type === 'BoxGeometry' && p.depth <= 0.5 && p.depth < Math.min(p.width, p.height) / 2 ? 1 : 0; };
+// a grill is a panel or a heating rod, not a ball (a glowing ball looks like a light bulb), and dark
+// enough to glow orange instead of pale like a lamp
+const notBall = (g) => (g.geometry.type === 'SphereGeometry' ? 0 : 1);
 const looksHot = (g) => (g.material.color.luminance <= 0.5 ? 1 : 0);
 
 // the space an object takes up (the camera looks along -z, so bigger z = closer to the viewer)
@@ -171,7 +172,7 @@ export const TESTS = [
   ['colour', 'The meat looks grilled (brown, not glowing)'],
   ['shape', 'A proper döner cone: round, taller than wide, the biggest thing in the shop'],
   ['spit', 'A vertical spit goes through the meat'],
-  ['heat', 'A hot grill panel glows right behind the meat, not touching it'],
+  ['heat', 'A hot grill glows orange right behind the meat, not touching it'],
   ['bread', 'A dürüm or a Fladenbrot lies on the counter, right where the meat falls'],
   ['shave', 'A knife shaves the meat, and only the meat'],
   ['spin', 'The meat turns slowly around the vertical axis'],
@@ -221,41 +222,52 @@ export function judge(code) {
     const tallOk = M.h >= 1.8 && M.h <= 3.5, baseOk = cyl && mp.radiusBottom >= 0.3, wider = cyl && mp.radiusTop > mp.radiusBottom * 1.2;
     const heightCredit = tallOk ? 1 : Math.max(0, 1 - Math.min(Math.abs(M.h - 1.8), Math.abs(M.h - 3.5)) / 1.5) * 0.7;
     const baseCredit = baseOk ? 1 : cyl ? Math.min(0.7, mp.radiusBottom / 0.3 * 0.7) : 0;
-    // a döner is clearly taller than it is wide (not a lampshade)
-    const slim = M.h / M.w, slimOk = slim >= 1.3, slimCredit = slimOk ? 1 : 0.8 * Math.min(1, slim / 1.3);
+    // a döner is clearly taller than it is wide (not a lampshade), but not a pole either
+    const slim = M.h / M.w, slimOk = slim >= 1.3 && slim <= 2.5, slimCredit = slimOk ? 1 : 0.8 * Math.min(slim / 1.3, 2.5 / slim);
     // a döner's height matters most: it should pay off before the spit and bread are adjusted to it
     part.shape = (cyl ? (round ? 0.15 : 0.05) : 0) + (wider ? 0.1 : 0) + 0.25 * heightCredit + 0.2 * slimCredit + 0.1 * baseCredit + (biggest ? 0.2 : 0);
-    why.shape = part.shape > 0.99 ? 'A proper döner cone.' : !cyl ? `That is a ${meat.geometry.type === 'BoxGeometry' ? 'box' : 'ball'}, not a döner.` : !round ? 'A döner is round, not pointy.' : !wider ? 'The cone is not wider at the top.' : !baseOk ? 'The cone ends in a needle point.' : !tallOk ? 'Wrong height for a döner.' : !slimOk ? 'Too wide: that is a lampshade, not a döner.' : 'Something else is bigger than the döner.';
+    why.shape = part.shape > 0.99 ? 'A proper döner cone.' : !cyl ? `That is a ${meat.geometry.type === 'BoxGeometry' ? 'box' : 'ball'}, not a döner.` : !round ? 'A döner is round, not pointy.' : !wider ? 'The cone is not wider at the top.' : !baseOk ? 'The cone ends in a needle point.' : !tallOk ? 'Wrong height for a döner.' : !slimOk ? (slim < 1.3 ? 'Too wide: that is a lampshade, not a döner.' : 'Too skinny: that is a pole, not a döner.') : 'Something else is bigger than the döner.';
     // 4. spit: thin, vertical, through the middle and sticking out at the top
     const rods = w.meshes.filter((m) => m !== meat && m.geometry.type === 'CylinderGeometry');
-    const spitScore = (s) => {
-      const p = s.geometry.parameters, r = Math.max(p.radiusTop, p.radiusBottom), S = boxOf(s);
-      const tall = Math.min(1, p.height / (M.h + 0.4)), thin = r <= 0.1 ? 1 : r <= 0.5 ? 0.4 : 0;
+    // each end of the rod counts on its own, so making one end thinner already helps
+    const thinEnd = (r) => (r <= 0.1 ? 1 : r <= 0.2 ? 0.75 : r <= 0.3 ? 0.6 : r <= 0.5 ? 0.45 : r <= 1 ? 0.2 : 0);
+    const spitParts = (s) => {
+      const p = s.geometry.parameters, S = boxOf(s);
+      const tall = Math.min(1, p.height / (M.h + 0.4)), thin = (thinEnd(p.radiusTop) + thinEnd(p.radiusBottom)) / 2;
       const centred = flat(s, meat) < 0.2 ? 1 : 0;
       const stickOut = S.y1 - (M.y1 + 0.1);   // how far it sticks out above the meat
       const through = stickOut >= 0 && S.y0 <= M.y0 + 0.2 ? 1 : ov(S.y0, S.y1, M.y0, M.y1) > 0 ? 0.4 + 0.4 * Math.max(0, Math.min(1, 1 + stickOut / 1.5)) : 0;
-      return 0.2 * tall + 0.2 * thin + 0.3 * centred * thin + 0.3 * through * thin;
+      const plain = glows(s.material.emissive) ? 0 : 1;   // a spit is plain metal, it does not glow
+      return { tall, thin, centred, through, plain, score: 0.15 * tall + 0.15 * thin + 0.25 * centred * thin + 0.3 * through * thin + 0.15 * plain };
     };
-    part.spit = rods.length ? Math.max(...rods.map(spitScore)) : 0;
-    why.spit = part.spit > 0.99 ? 'Spit is in place.' : !rods.length ? 'Nothing holds the meat up.' : part.spit < 0.5 ? 'That is not a spit, it is a pillar.' : 'The spit does not go through the meat.';
+    const spit = rods.map(spitParts).sort((a, b) => b.score - a.score)[0];
+    part.spit = spit ? spit.score : 0;
+    why.spit = part.spit > 0.99 ? 'Spit is in place.' : !spit ? 'Nothing holds the meat up.' : spit.thin < 1 ? 'That is not a spit, it is a pillar.'
+      : spit.tall < 1 ? 'The spit is too short.' : spit.centred < 1 ? 'The spit misses the middle of the meat.' : spit.through < 1 ? 'The spit does not go through the meat.' : 'A glowing spit? It should be plain metal.';
     // 5. heat: a glowing grill behind the meat, close but not touching, sensibly sized
-    const grills = w.meshes.filter((m) => m !== meat && warmGlow(m.material.emissive));
-    const heatScore = (g) => {
+    // (something as thin as a spit is no grill: one glowing rod cannot be the spit and the grill at once)
+    const grills = w.meshes.filter((m) => m !== meat && !shapes.get(m).thin && warmGlow(m.material.emissive));
+    const heatParts = (g) => {
       const G = boxOf(g), gap = M.z0 - G.z1;
       const behind = gap >= 0.05 ? 1 : 0.7 * Math.max(0, Math.min(1, 1 + (gap - 0.05) / 2));   // a little credit for moving it back part of the way
-      const apart = touches(G, M) ? 0 : 1, level = Math.abs(g.position.y - meat.position.y) < 0.8 ? 1 : 0;
-      // a panel, not a stick: wide and tall enough, but not bigger than the döner
+      const dy = Math.abs(g.position.y - meat.position.y);
+      const apart = touches(G, M) ? 0 : 1, level = dy < 0.8 ? 1 : 0.7 * Math.max(0, 1 - (dy - 0.8) / 2);
+      // wide and tall enough to heat the meat, but not bigger than the döner
       const wide = G.w > 3 ? 0.5 : Math.min(1, G.w / 0.8), tall = G.h > 1.6 * M.h ? 0.5 : Math.min(1, G.h / 0.8);
-      const near = gap <= 2 ? 1 : 0;
+      const near = gap <= 2 ? 1 : 0.7 * Math.max(0, 1 - (gap - 2) / 2);
       const side = Math.abs(g.position.x - meat.position.x), aligned = side <= 0.6 ? 1 : 0.7 * Math.max(0, 1 - (side - 0.6) / 2);
-      return 0.1 + 0.15 * behind + 0.1 * apart + 0.05 * level + 0.1 * wide + 0.1 * tall + 0.1 * near + 0.1 * aligned + 0.1 * isPanel(g) + 0.1 * looksHot(g);
+      const ball = notBall(g), hot = looksHot(g);
+      return { behind, apart, level, wide, tall, near, aligned, ball, hot, score: 0.1 + 0.15 * behind + 0.1 * apart + 0.05 * level + 0.1 * wide + 0.1 * tall + 0.1 * near + 0.1 * aligned + 0.1 * ball + 0.1 * hot };
     };
-    const grill = grills.length ? grills.reduce((a, b) => (heatScore(b) > heatScore(a) ? b : a)) : null;
-    part.heat = grill ? heatScore(grill) : 0;
-    why.heat = part.heat > 0.99 ? 'Hot grill behind the meat, perfect.' : !grill ? 'Nothing is cooking the meat.'
-      : !isPanel(grill) ? 'That is a lamp, not a grill panel.' : !looksHot(grill) ? 'The grill glows pale, like a lamp.' : 'The grill is in the wrong place (or the wrong size).';
+    const heat = grills.map(heatParts).sort((a, b) => b.score - a.score)[0];
+    part.heat = heat ? heat.score : 0;
+    why.heat = part.heat > 0.99 ? 'Hot grill behind the meat, perfect.' : !heat ? 'Nothing is cooking the meat.'
+      : !heat.ball ? 'A glowing ball? That is a light bulb, not a grill.' : !heat.hot ? 'The grill glows pale, like a lamp.'
+        : heat.behind < 1 ? 'The grill is not behind the meat.' : !heat.apart ? 'The grill touches the meat.' : heat.wide < 1 || heat.tall < 1 ? 'The grill is too small (or too big).'
+          : heat.near < 1 ? 'The grill is too far away.' : heat.level < 1 ? 'The grill is too high or too low.' : 'The grill is off to the side.';
     // 6. bread: a flat round dürüm or a triangle of Fladenbrot, lying on the counter where the slices fall
-    const breads = w.meshes.filter((m) => m !== meat && !shapes.get(m).thin && isBread(m.material.color.hsl()));
+    // (glowing bread is not bread: one glowing wheat-coloured thing cannot be the grill and the bread at once)
+    const breads = w.meshes.filter((m) => m !== meat && !shapes.get(m).thin && isBread(m.material.color.hsl()) && !glows(m.material.emissive));
     const breadParts = (b) => {
       const B = boxOf(b), t = w.turn[w.meshes.indexOf(b)];
       const kind = breadKind(b) ? 1 : b.geometry.type === 'CylinderGeometry' ? 0.3 : 0;

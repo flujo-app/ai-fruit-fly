@@ -71,8 +71,10 @@ keywords, names, numbers, colours and symbols. Open <http://127.0.0.1:8765/fly-g
   fly has its **own copy** of the learning-centre memory: 5,177 Kenyon cells and their push onto the
   "approach" and "avoid" output neurons. That's about 41 KB per fly.
 - **Smells:** what a fly smells at a decision is "which object am I describing (or which line) +
-  which blank + this token". Which Kenyon cells fire for each smell was computed in advance with the
-  real spiking model (`tools/make_fingerprints.mjs`, 1,406 smells, about 3% of the cells each).
+  which blank + this token". For decisions about an object, the whole smell depends on the object,
+  so "height 2" smells different for the döner and for the bread. Which Kenyon cells fire for each
+  smell was computed in advance with the real spiking model (`tools/make_fingerprints.mjs`, 1,448
+  smells, about 3% of the cells each).
 - **Learning:** each round, every fly writes 4 programs. A stand-in for three.js runs each one and
   the customer gives a single rating out of 8, with partial credit. The fly's best program earns
   sugar and its worst earns bitter, but only for the tokens where the two programs differ. Each
@@ -90,6 +92,10 @@ keywords, names, numbers, colours and symbols. Open <http://127.0.0.1:8765/fly-g
   4. A little curiosity, so the flies keep trying new tokens after they become confident.
   5. The customer gives smooth partial credit, for example for "almost a spit" or "the grill moved part of the way".
   6. Enough position choices: the grill can only fit behind wider döners if things can move far enough back.
+  7. Smells that belong to one object. At first, "height 2" smelled almost the same for every
+     object, so learning "the döner must be tall" also made the bread tall, and a flat round
+     dürüm was nearly impossible to learn. (A bread loaf never had this problem, because box
+     sizes are separate blanks from cylinder sizes.)
 
 **The loopholes, and the pickier customer.** The first customer only checked a list of facts: a
 brown cone exists, something glows near it, something bread-coloured is lower, and so on. The flies
@@ -104,22 +110,27 @@ tightened step by step, and the flies found a new gap each time:
 4. The winner of the first video passed all 8 tests but looked like a **lampshade**: wider than
    tall, with a pale glowing ball as the "grill" (it looked like a light bulb), a bread loaf, and
    a knife that shaved the ball as well as the meat.
+5. Against the new rules, they tried using one thing twice: a glowing, wheat-coloured disc as
+   both the bread and the grill, and a glowing spit that also counted as a bit of grill. Now
+   nothing that glows counts as bread, and nothing as thin as a spit counts as a grill.
 
 The customer now checks that:
 - the döner stands in the middle, is brightly lit **on the side facing the customer** (a simple
   light calculation), and nothing big hides it;
 - the meat is brown, doesn't glow, is the biggest thing in the shop, is round, is **clearly taller
   than it is wide**, and doesn't end in a needle point;
-- the spit is thin, vertical and sticks out at the top;
-- the grill is a flat, dark **panel** that glows orange right behind the meat, at a sensible size
-  and not touching it (a ball or a pale panel looks like a lamp);
+- the döner is neither too wide (a lampshade) nor too skinny (a pole);
+- the spit is thin, plain metal (it doesn't glow), vertical and sticks out at the top;
+- the grill glows **orange** right behind the meat, at a sensible size and not touching it. It
+  can be a panel or a heating rod, but **not a ball** (a glowing ball looks like a light bulb) and
+  not pale (that looks like a lamp);
 - the bread is a flat, round **dürüm** or a triangle of **Fladenbrot**, lies on the counter, and
   sits **where the shaved meat falls**. The customer follows a dozen slices from the knife down to
   the counter, and at least 9 in 10 must land on the bread;
 - the knife shaves the meat, **and only the meat**.
 
-To make this possible, the flies got three new things to type: the size `4` (for a spit that is
-longer than a tall döner), and an optional fourth number for cylinders, the number of corners
+To make this possible, the flies got new things to type: the sizes `0.3` (for slim döners) and
+`4` (for a spit that is longer than a tall döner), and an optional fourth number for cylinders, the number of corners
 (`3` makes a triangle, so `CylinderGeometry(1.5, 1.5, 0.2, 3)` is a piece of Fladenbrot). In the
 real app, slices are cut from the side facing the customer, fly off a little, and stay on the
 first thing they land on, using the same numbers as the customer.
