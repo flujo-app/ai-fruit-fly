@@ -53,6 +53,10 @@ this simple model to fire, so the fly's liking is read from how hard its learnin
 
 ## Fly Gym (fly-gym.html): hard mode, mass training
 
+Add `?demo` to the address (`fly-gym.html?demo`) and training starts by itself, then stops 40
+rounds after the first perfect döner. That's handy for recordings. A recorded run is in
+`../media/fly-gym-demo.mp4`, and the winning program is in `examples/doener-by-1024-flies.html`.
+
 Here the flies get no ready-made code blocks. They type a three.js program **one token at a time**:
 keywords, names, numbers, colours and symbols. Open <http://127.0.0.1:8765/fly-gym.html> and press
 **Start training**.

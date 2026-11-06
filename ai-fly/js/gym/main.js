@@ -7,6 +7,15 @@ const $ = (id) => document.getElementById(id);
 const LABS = 8;
 const MIGRATE_EVERY = 2;
 const ATTEMPTS = 4;
+// ?demo: start training by itself and stop a little after the first perfect döner (for recordings)
+const DEMO = new URLSearchParams(location.search).has('demo');
+const DEMO_AFTER = 40;
+
+function celebrate(best) {
+  const el = $('banner');
+  el.innerHTML = `<b>Generation ${gen}:</b> fly ${best.fly + 1} in lab ${best.lab + 1} just typed a döner app that passes all 8 tests!`;
+  el.classList.add('show');
+}
 
 // ---------------------------------------------------------------- workers (one lab each)
 let workers = [];
@@ -50,6 +59,7 @@ async function setup() {
   perLab = Number($('flies').value);
   workers = Array.from({ length: LABS }, makeWorker);
   gen = 0; firstSolved = -1; programs = 0; tokensTyped = 0; history = []; labStats = []; lastResults = []; selected = null; shownCode = '';
+  $('banner').classList.remove('show');
   $('st-flies').textContent = (LABS * perLab).toLocaleString();
   ['st-gen', 'st-solved', 'st-programs', 'st-tokens'].forEach((id) => ($(id).textContent = '0'));
   ['st-best', 'st-mean', 'st-speed'].forEach((id) => ($(id).textContent = '–'));
@@ -86,6 +96,12 @@ async function step() {
   if (solved && firstSolved < 0) {
     firstSolved = gen;
     $('milestone').textContent = `first perfect döner: generation ${gen}`;
+    celebrate(best);
+  }
+  if (DEMO && firstSolved > 0 && gen >= firstSolved + DEMO_AFTER) {
+    running = false;
+    setRunLabel();
+    document.title = 'Fly Gym (done)';
   }
   if (firstSolved < 0 && history.length > 120) {
     const before = Math.max(...history.slice(-120, -60).map((h) => h.best));
@@ -265,5 +281,7 @@ function frame(t) {
 }
 requestAnimationFrame(frame);
 
-setup().catch((err) => { $('code-note').textContent = `Could not start: ${err.message}`; console.error(err); });
+setup()
+  .then(() => { if (DEMO) setTimeout(() => { running = true; setRunLabel(); loop(); }, 1500); })
+  .catch((err) => { $('code-note').textContent = `Could not start: ${err.message}`; console.error(err); });
 window.__gym = { get gen() { return gen; }, get history() { return history; }, get firstSolved() { return firstSolved; } };
