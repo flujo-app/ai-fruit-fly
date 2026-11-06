@@ -72,7 +72,7 @@ keywords, names, numbers, colours and symbols. Open <http://127.0.0.1:8765/fly-g
   "approach" and "avoid" output neurons. That's about 41 KB per fly.
 - **Smells:** what a fly smells at a decision is "which object am I describing (or which line) +
   which blank + this token". Which Kenyon cells fire for each smell was computed in advance with the
-  real spiking model (`tools/make_fingerprints.mjs`, 1,328 smells, about 3% of the cells each).
+  real spiking model (`tools/make_fingerprints.mjs`, 1,406 smells, about 3% of the cells each).
 - **Learning:** each round, every fly writes 4 programs. A stand-in for three.js runs each one and
   the customer gives a single rating out of 8, with partial credit. The fly's best program earns
   sugar and its worst earns bitter, but only for the tokens where the two programs differ. Each
@@ -101,18 +101,31 @@ tightened step by step, and the flies found a new gap each time:
 2. They used a tiny glowing stick far off to the side as the "grill", put the döner near the
    top edge and lit it with dim brown lamps.
 3. They put the lamp at its default position, inside the meat, so the döner was pitch black.
+4. The winner of the first video passed all 8 tests but looked like a **lampshade**: wider than
+   tall, with a pale glowing ball as the "grill" (it looked like a light bulb), a bread loaf, and
+   a knife that shaved the ball as well as the meat.
 
 The customer now checks that:
 - the döner stands in the middle, is brightly lit **on the side facing the customer** (a simple
   light calculation), and nothing big hides it;
-- the meat is brown, doesn't glow, is the biggest thing in the shop and doesn't end in a needle point;
+- the meat is brown, doesn't glow, is the biggest thing in the shop, is round, is **clearly taller
+  than it is wide**, and doesn't end in a needle point;
 - the spit is thin, vertical and sticks out at the top;
-- the grill is a glowing panel right behind the meat, at a sensible size and not touching it;
-- the bread is bread-sized and directly under the meat.
+- the grill is a flat, dark **panel** that glows orange right behind the meat, at a sensible size
+  and not touching it (a ball or a pale panel looks like a lamp);
+- the bread is a flat, round **dürüm** or a triangle of **Fladenbrot**, lies on the counter, and
+  sits **where the shaved meat falls**. The customer follows a dozen slices from the knife down to
+  the counter, and at least 9 in 10 must land on the bread;
+- the knife shaves the meat, **and only the meat**.
 
-Run `node tools/test_judge.mjs` to check that a proper döner passes and the loophole döners fail.
-One gap is still open: nothing says a döner must be taller than it is wide. The recorded flies'
-döner passes all 8 tests, but it looks a bit like a lampshade.
+To make this possible, the flies got three new things to type: the size `4` (for a spit that is
+longer than a tall döner), and an optional fourth number for cylinders, the number of corners
+(`3` makes a triangle, so `CylinderGeometry(1.5, 1.5, 0.2, 3)` is a piece of Fladenbrot). In the
+real app, slices are cut from the side facing the customer, fly off a little, and stay on the
+first thing they land on, using the same numbers as the customer.
+
+Run `node tools/test_judge.mjs` to check that a proper döner passes (on a dürüm and on a
+Fladenbrot) and the loophole döners and the lampshade fail.
 
 **Hand-made:** the token rules, the numbers and colours on offer, the `knife()` helper and the 8
 tests. **Real:** the learning-centre wiring and how dopamine changes it. Every token in the winning

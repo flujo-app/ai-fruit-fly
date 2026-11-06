@@ -20,7 +20,7 @@ class Color {
 }
 class Vec3 { constructor() { this.x = 0; this.y = 0; this.z = 0; } set(x, y, z) { this.x = x; this.y = y; this.z = z; return this; } }
 class BoxGeometry { constructor(w = 1, h = 1, d = 1) { this.type = 'BoxGeometry'; this.parameters = { width: w, height: h, depth: d }; } }
-class CylinderGeometry { constructor(rt = 1, rb = 1, h = 1) { this.type = 'CylinderGeometry'; this.parameters = { radiusTop: rt, radiusBottom: rb, height: h }; } }
+class CylinderGeometry { constructor(rt = 1, rb = 1, h = 1, n = 32) { this.type = 'CylinderGeometry'; this.parameters = { radiusTop: rt, radiusBottom: rb, height: h, radialSegments: n }; } }
 class SphereGeometry { constructor(r = 1) { this.type = 'SphereGeometry'; this.parameters = { radius: r }; } }
 class MeshStandardMaterial { constructor(o = {}) { this.color = new Color(o.color ?? 0xffffff); this.emissive = new Color(o.emissive ?? 0); } }
 class Mesh { constructor(g, m) { this.isMesh = true; this.geometry = g; this.material = m; this.position = new Vec3(); this.rotation = new Vec3(); } }
@@ -32,6 +32,13 @@ const MOCK = {
   AmbientLight: class extends Light { constructor(c, i) { super(c, i); this.kind = 'ambient'; } },
   PointLight: class extends Light { constructor(c, i) { super(c, i); this.kind = 'point'; this.position = new Vec3(); } },
 };
+
+// The shop around every program (the real app uses the same numbers): the top of the counter, and
+// how shaved slices fly. The knife cuts the side of the meat that faces the customer, between 10% and
+// 80% of its height, a little left or right of the middle; each slice gets a small push away from the
+// meat and then drops onto whatever is below it.
+export const COUNTER_TOP = -2.1;
+export const SLICE = { from: 0.1, to: 0.8, side: 0.35, push: 0.35, gravity: 4 };
 
 // How much light reaches the side of the meat that faces the customer (a simple Lambert estimate):
 // ambient light everywhere, other lights only if they shine onto that side and are not inside the meat.
@@ -83,11 +90,16 @@ function shapeOf(m) {
     default: return { halfH: p.radius, rad: p.radius, vol: (4 / 3) * Math.PI * p.radius ** 3, thin: p.radius < 0.1 };
   }
 }
+// a dürüm is a round flatbread; a Fladenbrot (pide) piece is a triangle
+const breadKind = (b) => b.geometry.type !== 'CylinderGeometry' ? null : b.geometry.parameters.radialSegments >= 8 ? 'dürüm' : b.geometry.parameters.radialSegments === 3 ? 'Fladenbrot' : null;
 const flat = (a, b) => Math.hypot(a.position.x - b.position.x, a.position.z - b.position.z);
 const isBrown = ({ h, s, l }) => h >= 0.02 && h <= 0.12 && s >= 0.35 && l >= 0.15 && l < 0.45;
 const isBread = ({ h, s, l }) => h >= 0.06 && h <= 0.16 && s >= 0.3 && l >= 0.55;
 const warmGlow = (c) => c.r >= 0.6 && c.r > 1.5 * c.b;
 const glows = (c) => Math.max(c.r, c.g, c.b) >= 0.15;
+// a grill is a flat panel (not a ball or a stick), dark enough to glow orange instead of pale like a lamp
+const isPanel = (g) => { const p = g.geometry.parameters; return g.geometry.type === 'BoxGeometry' && p.depth <= 0.5 && p.depth < Math.min(p.width, p.height) / 2 ? 1 : 0; };
+const looksHot = (g) => (g.material.color.luminance <= 0.5 ? 1 : 0);
 
 // the space an object takes up (the camera looks along -z, so bigger z = closer to the viewer)
 function boxOf(m) {
@@ -98,6 +110,57 @@ function boxOf(m) {
   else { hx = hy = hz = p.radius; }
   return { x0: x - hx, x1: x + hx, y0: y - hy, y1: y + hy, z0: z - hz, z1: z + hz, w: 2 * hx, h: 2 * hy };
 }
+// how far the meat reaches towards the customer at a height (0 = bottom, 1 = top)
+function radiusAt(m, f) {
+  const p = m.geometry.parameters;
+  if (m.geometry.type === 'CylinderGeometry') return p.radiusBottom + (p.radiusTop - p.radiusBottom) * f;
+  if (m.geometry.type === 'SphereGeometry') return p.radius * Math.sqrt(Math.max(0, 1 - (2 * f - 1) ** 2));
+  return p.depth / 2;
+}
+// where shaved slices start and which way they fly (a few fixed samples of what the app does at random)
+function sliceSamples(meat) {
+  const M = boxOf(meat), { x, z } = meat.position, out = [];
+  for (const f of [0.15, 0.35, 0.55, 0.75]) {
+    const r = radiusAt(meat, f), y = M.y0 + f * M.h;
+    for (const s of [-1, 0, 1]) {
+      if (meat.geometry.type === 'BoxGeometry') { out.push({ x: x + s * SLICE.side * meat.geometry.parameters.width / 2, y, z: z + r + 0.04, vx: 0, vz: SLICE.push }); continue; }
+      const a = s * SLICE.side * r, c = Math.sqrt(Math.max(0, r * r - a * a));
+      out.push({ x: x + a, y, z: z + c + 0.04, vx: r ? SLICE.push * a / r : 0, vz: r ? SLICE.push * c / r : SLICE.push });
+    }
+  }
+  return out;
+}
+// the top of a piece of bread seen from above, as a list of corners (a round one has 32)
+function topOutline(b, turning) {
+  const p = b.geometry.parameters, { x, z } = b.position;
+  if (b.geometry.type === 'BoxGeometry') return [[x - p.width / 2, z - p.depth / 2], [x + p.width / 2, z - p.depth / 2], [x + p.width / 2, z + p.depth / 2], [x - p.width / 2, z + p.depth / 2]];
+  const cyl = b.geometry.type === 'CylinderGeometry';
+  let r = cyl ? p.radiusTop : p.radius * 0.7, n = cyl ? p.radialSegments : 32;
+  if (turning) { r *= Math.cos(Math.PI / n); n = 32; }   // a turning bread only reliably covers its inner circle
+  // three.js puts the first corner straight towards the customer (+z)
+  return Array.from({ length: n }, (_, i) => [x + r * Math.sin((2 * Math.PI * i) / n), z + r * Math.cos((2 * Math.PI * i) / n)]);
+}
+function inside([px, pz], poly) {
+  let yes = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, zi] = poly[i], [xj, zj] = poly[j];
+    if ((zi > pz) !== (zj > pz) && px < ((xj - xi) * (pz - zi)) / (zj - zi) + xi) yes = !yes;
+  }
+  return yes;
+}
+// how many of the shaved slices land on this bread (0..1)
+function landsOn(meat, bread, turning) {
+  const top = boxOf(bread).y1, poly = topOutline(bread, turning), samples = sliceSamples(meat);
+  let hits = 0;
+  for (const s of samples) {
+    const drop = s.y - top;
+    if (drop <= 0) continue;
+    const t = Math.sqrt((2 * drop) / SLICE.gravity);
+    if (inside([s.x + s.vx * t, s.z + s.vz * t], poly)) hits++;
+  }
+  return hits / samples.length;
+}
+
 const ov = (a0, a1, b0, b1) => Math.min(a1, b1) - Math.max(a0, b0);
 const touches = (A, B, m = 0.05) => ov(A.x0, A.x1, B.x0, B.x1) > m && ov(A.y0, A.y1, B.y0, B.y1) > m && ov(A.z0, A.z1, B.z0, B.z1) > m;
 // does B cover a good part of A as seen from the front?
@@ -106,11 +169,11 @@ const hides = (B, A) => B.z1 > A.z0 + 0.1 && Math.max(0, ov(A.x0, A.x1, B.x0, B.
 export const TESTS = [
   ['light', 'The döner stands in the middle, brightly lit, and nothing hides it'],
   ['colour', 'The meat looks grilled (brown, not glowing)'],
-  ['shape', 'A proper döner cone, the biggest thing in the shop'],
+  ['shape', 'A proper döner cone: round, taller than wide, the biggest thing in the shop'],
   ['spit', 'A vertical spit goes through the meat'],
   ['heat', 'A hot grill panel glows right behind the meat, not touching it'],
-  ['bread', 'Bread-sized bread waits below the meat'],
-  ['shave', 'A knife shaves the meat'],
+  ['bread', 'A dürüm or a Fladenbrot lies on the counter, right where the meat falls'],
+  ['shave', 'A knife shaves the meat, and only the meat'],
   ['spin', 'The meat turns slowly around the vertical axis'],
 ];
 
@@ -154,12 +217,15 @@ export function judge(code) {
     // 3. shape: a döner cone with sensible proportions, and the biggest thing in the shop
     const cyl = meat.geometry.type === 'CylinderGeometry';
     const biggest = w.meshes.every((m) => m === meat || shapes.get(m).vol <= ms.vol);
+    const round = cyl && mp.radialSegments >= 8;
     const tallOk = M.h >= 1.8 && M.h <= 3.5, baseOk = cyl && mp.radiusBottom >= 0.3, wider = cyl && mp.radiusTop > mp.radiusBottom * 1.2;
     const heightCredit = tallOk ? 1 : Math.max(0, 1 - Math.min(Math.abs(M.h - 1.8), Math.abs(M.h - 3.5)) / 1.5) * 0.7;
     const baseCredit = baseOk ? 1 : cyl ? Math.min(0.7, mp.radiusBottom / 0.3 * 0.7) : 0;
+    // a döner is clearly taller than it is wide (not a lampshade)
+    const slim = M.h / M.w, slimOk = slim >= 1.3, slimCredit = slimOk ? 1 : 0.8 * Math.min(1, slim / 1.3);
     // a döner's height matters most: it should pay off before the spit and bread are adjusted to it
-    part.shape = (cyl ? 0.15 : 0) + (wider ? 0.15 : 0) + 0.35 * heightCredit + 0.15 * baseCredit + (biggest ? 0.2 : 0);
-    why.shape = part.shape > 0.99 ? 'A proper döner cone.' : !cyl ? `That is a ${meat.geometry.type === 'BoxGeometry' ? 'box' : 'ball'}, not a döner.` : !wider ? 'The cone is not wider at the top.' : !baseOk ? 'The cone ends in a needle point.' : !tallOk ? 'Wrong height for a döner.' : 'Something else is bigger than the döner.';
+    part.shape = (cyl ? (round ? 0.15 : 0.05) : 0) + (wider ? 0.1 : 0) + 0.25 * heightCredit + 0.2 * slimCredit + 0.1 * baseCredit + (biggest ? 0.2 : 0);
+    why.shape = part.shape > 0.99 ? 'A proper döner cone.' : !cyl ? `That is a ${meat.geometry.type === 'BoxGeometry' ? 'box' : 'ball'}, not a döner.` : !round ? 'A döner is round, not pointy.' : !wider ? 'The cone is not wider at the top.' : !baseOk ? 'The cone ends in a needle point.' : !tallOk ? 'Wrong height for a döner.' : !slimOk ? 'Too wide: that is a lampshade, not a döner.' : 'Something else is bigger than the döner.';
     // 4. spit: thin, vertical, through the middle and sticking out at the top
     const rods = w.meshes.filter((m) => m !== meat && m.geometry.type === 'CylinderGeometry');
     const spitScore = (s) => {
@@ -182,24 +248,35 @@ export function judge(code) {
       const wide = G.w > 3 ? 0.5 : Math.min(1, G.w / 0.8), tall = G.h > 1.6 * M.h ? 0.5 : Math.min(1, G.h / 0.8);
       const near = gap <= 2 ? 1 : 0;
       const side = Math.abs(g.position.x - meat.position.x), aligned = side <= 0.6 ? 1 : 0.7 * Math.max(0, 1 - (side - 0.6) / 2);
-      return 0.15 + 0.2 * behind + 0.1 * apart + 0.1 * level + 0.15 * wide + 0.1 * tall + 0.1 * near + 0.1 * aligned;
+      return 0.1 + 0.15 * behind + 0.1 * apart + 0.05 * level + 0.1 * wide + 0.1 * tall + 0.1 * near + 0.1 * aligned + 0.1 * isPanel(g) + 0.1 * looksHot(g);
     };
-    part.heat = grills.length ? Math.max(...grills.map(heatScore)) : 0;
-    why.heat = part.heat > 0.99 ? 'Hot grill behind the meat, perfect.' : grills.length ? 'The grill is in the wrong place (or the wrong size).' : 'Nothing is cooking the meat.';
-    // 6. bread: bread-coloured, bread-sized, right under the meat
+    const grill = grills.length ? grills.reduce((a, b) => (heatScore(b) > heatScore(a) ? b : a)) : null;
+    part.heat = grill ? heatScore(grill) : 0;
+    why.heat = part.heat > 0.99 ? 'Hot grill behind the meat, perfect.' : !grill ? 'Nothing is cooking the meat.'
+      : !isPanel(grill) ? 'That is a lamp, not a grill panel.' : !looksHot(grill) ? 'The grill glows pale, like a lamp.' : 'The grill is in the wrong place (or the wrong size).';
+    // 6. bread: a flat round dürüm or a triangle of Fladenbrot, lying on the counter where the slices fall
     const breads = w.meshes.filter((m) => m !== meat && !shapes.get(m).thin && isBread(m.material.color.hsl()));
-    const breadScore = (b) => {
-      const B = boxOf(b);
+    const breadParts = (b) => {
+      const B = boxOf(b), t = w.turn[w.meshes.indexOf(b)];
+      const kind = breadKind(b) ? 1 : b.geometry.type === 'CylinderGeometry' ? 0.3 : 0;
+      const flatOk = B.h <= 0.25 ? 1 : B.h <= 0.6 ? 0.4 : 0, sized = B.w >= 1 && B.w <= 3.5 ? 1 : 0;
       const below = B.y1 <= M.y0 + 0.15 ? 1 : Math.min(0.8, Math.max(0, (meat.position.y - b.position.y) / (M.h / 2 + B.h / 2)));
-      const d = flat(b, meat), under = d <= 0.8 ? 1 : 0.7 * Math.max(0, 1 - (d - 0.8) / 1.5);
-      const sized = B.w >= 0.6 && B.w <= 2.6 && B.h <= B.w ? 1 : 0, apart = touches(B, M, 0.2) ? 0 : 1;
-      return 0.3 + 0.25 * below + 0.15 * under + 0.15 * sized + 0.15 * apart;
+      const lift = Math.abs(B.y0 - COUNTER_TOP), onCounter = lift <= 0.12 ? 1 : 0.6 * Math.max(0, 1 - lift / 2);
+      const apart = touches(B, M, 0.2) ? 0 : 1;
+      const catches = Math.min(1, landsOn(meat, b, Math.abs(t.x) + Math.abs(t.y) + Math.abs(t.z) > 0.01) / 0.9);
+      return { kind, flatOk, sized, below, onCounter, apart, catches, score: 0.1 + 0.2 * kind + 0.1 * flatOk + 0.1 * sized + 0.1 * below + 0.1 * onCounter + 0.05 * apart + 0.25 * catches };
     };
-    part.bread = breads.length ? Math.max(...breads.map(breadScore)) : 0;
-    why.bread = part.bread > 0.99 ? 'Fresh bread below.' : breads.length ? 'The bread is not under the meat (or not bread-sized).' : 'No bread.';
+    const scored = breads.map((b) => [b, breadParts(b)]).sort((a, b) => b[1].score - a[1].score);
+    const [bread, bp] = scored[0] || [null, null];
+    part.bread = bread ? bp.score : 0;
+    why.bread = part.bread > 0.99 ? `A fresh ${breadKind(bread)}, and the meat lands right on it.` : !bread ? 'No bread.'
+      : bp.kind < 1 ? (bread.geometry.type === 'CylinderGeometry' ? 'Odd-shaped bread? I want a round dürüm or a Fladenbrot triangle.' : 'A loaf? I want a dürüm or a Fladenbrot.')
+        : bp.flatOk < 1 ? 'The bread is too thick.' : bp.sized < 1 ? 'The bread is the wrong size.' : bp.onCounter < 1 ? 'The bread floats in the air.'
+          : bp.below < 1 || bp.apart < 1 ? 'The bread is not under the meat.' : 'The meat falls next to the bread.';
     // 7. knife
-    part.shave = w.knives.length ? (w.knives.includes(meat) ? 1 : 0.5) : 0;
-    why.shave = part.shave > 0.99 ? 'Thin slices fall into the bread.' : w.knives.length ? 'The knife cuts the wrong thing.' : 'Nobody cuts the meat.';
+    const onMeat = w.knives.includes(meat), otherCuts = w.knives.some((k) => k !== meat);
+    part.shave = onMeat ? (otherCuts ? 0.6 : 1) : w.knives.length ? 0.3 : 0;
+    why.shave = part.shave > 0.99 ? 'Thin slices of meat, and only meat.' : onMeat ? 'The knife also shaves things that are not meat.' : w.knives.length ? 'The knife cuts the wrong thing.' : 'Nobody cuts the meat.';
     // 8. rotation
     const ti = w.meshes.indexOf(meat), t = w.turn[ti];
     const any = w.turn.some((r) => Math.abs(r.x) + Math.abs(r.y) + Math.abs(r.z) > 0.01);
