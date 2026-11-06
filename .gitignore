@@ -7,3 +7,6 @@ raw_data/
 __pycache__/
 node_modules/
 *.log
+
+# saved Fly Gym training runs (local only)
+ai-fly/.state/

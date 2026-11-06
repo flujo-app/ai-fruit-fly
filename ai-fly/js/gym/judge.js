@@ -27,8 +27,36 @@ class Mesh { constructor(g, m) { this.isMesh = true; this.geometry = g; this.mat
 class Light { constructor(color = 0xffffff, intensity = 1) { this.isLight = true; this.color = new Color(color); this.intensity = intensity; } }
 const MOCK = {
   BoxGeometry, CylinderGeometry, SphereGeometry, MeshStandardMaterial, Mesh,
-  DirectionalLight: class extends Light {}, AmbientLight: class extends Light {}, PointLight: class extends Light {},
+  // three.js defaults: a directional light shines from straight above, a point light sits at the origin
+  DirectionalLight: class extends Light { constructor(c, i) { super(c, i); this.kind = 'directional'; this.position = new Vec3().set(0, 1, 0); } },
+  AmbientLight: class extends Light { constructor(c, i) { super(c, i); this.kind = 'ambient'; } },
+  PointLight: class extends Light { constructor(c, i) { super(c, i); this.kind = 'point'; this.position = new Vec3(); } },
 };
+
+// How much light reaches the side of the meat that faces the customer (a simple Lambert estimate):
+// ambient light everywhere, other lights only if they shine onto that side and are not inside the meat.
+function frontLight(lights, meat, M) {
+  const p = meat.geometry.parameters;
+  let n = [0, 0, 1];
+  if (meat.geometry.type === 'CylinderGeometry') {
+    const s = (p.radiusBottom - p.radiusTop) / p.height;   // a cone wider at the top faces slightly down
+    const len = Math.hypot(s, 1);
+    n = [0, s / len, 1 / len];
+  }
+  let total = 0;
+  for (const l of lights) {
+    let k = 1;
+    if (l.kind !== 'ambient') {
+      const lp = l.position;
+      const inside = lp.x > M.x0 && lp.x < M.x1 && lp.y > M.y0 && lp.y < M.y1 && lp.z > M.z0 && lp.z < M.z1;
+      const d = l.kind === 'directional' ? [lp.x, lp.y, lp.z] : [lp.x - meat.position.x, lp.y - meat.position.y, lp.z - meat.position.z];
+      const dl = Math.hypot(...d) || 1;
+      k = inside ? 0 : Math.max(0, (n[0] * d[0] + n[1] * d[1] + n[2] * d[2]) / dl);
+    }
+    total += l.intensity * l.color.luminance * k;
+  }
+  return total;
+}
 
 export function runProgram(code) {
   const scene = { children: [], add(o) { if (!this.children.includes(o)) this.children.push(o); return this; } };
@@ -59,14 +87,29 @@ const flat = (a, b) => Math.hypot(a.position.x - b.position.x, a.position.z - b.
 const isBrown = ({ h, s, l }) => h >= 0.02 && h <= 0.12 && s >= 0.35 && l >= 0.15 && l < 0.45;
 const isBread = ({ h, s, l }) => h >= 0.06 && h <= 0.16 && s >= 0.3 && l >= 0.55;
 const warmGlow = (c) => c.r >= 0.6 && c.r > 1.5 * c.b;
+const glows = (c) => Math.max(c.r, c.g, c.b) >= 0.15;
+
+// the space an object takes up (the camera looks along -z, so bigger z = closer to the viewer)
+function boxOf(m) {
+  const p = m.geometry.parameters, { x, y, z } = m.position;
+  let hx, hy, hz;
+  if (m.geometry.type === 'CylinderGeometry') { hx = hz = Math.max(p.radiusTop, p.radiusBottom); hy = p.height / 2; }
+  else if (m.geometry.type === 'BoxGeometry') { hx = p.width / 2; hy = p.height / 2; hz = p.depth / 2; }
+  else { hx = hy = hz = p.radius; }
+  return { x0: x - hx, x1: x + hx, y0: y - hy, y1: y + hy, z0: z - hz, z1: z + hz, w: 2 * hx, h: 2 * hy };
+}
+const ov = (a0, a1, b0, b1) => Math.min(a1, b1) - Math.max(a0, b0);
+const touches = (A, B, m = 0.05) => ov(A.x0, A.x1, B.x0, B.x1) > m && ov(A.y0, A.y1, B.y0, B.y1) > m && ov(A.z0, A.z1, B.z0, B.z1) > m;
+// does B cover a good part of A as seen from the front?
+const hides = (B, A) => B.z1 > A.z0 + 0.1 && Math.max(0, ov(A.x0, A.x1, B.x0, B.x1)) * Math.max(0, ov(A.y0, A.y1, B.y0, B.y1)) > 0.25 * A.w * A.h;
 
 export const TESTS = [
-  ['light', 'The shop is lit with warm light'],
-  ['colour', 'The meat looks grilled (brown)'],
-  ['shape', 'It is shaped like a döner (wider at the top)'],
+  ['light', 'The döner stands in the middle, brightly lit, and nothing hides it'],
+  ['colour', 'The meat looks grilled (brown, not glowing)'],
+  ['shape', 'A proper döner cone, the biggest thing in the shop'],
   ['spit', 'A vertical spit goes through the meat'],
-  ['heat', 'A hot grill glows beside the meat'],
-  ['bread', 'Bread waits below the meat'],
+  ['heat', 'A hot grill panel glows right behind the meat, not touching it'],
+  ['bread', 'Bread-sized bread waits below the meat'],
   ['shave', 'A knife shaves the meat'],
   ['spin', 'The meat turns slowly around the vertical axis'],
 ];
@@ -81,51 +124,79 @@ export function judge(code) {
   // the customer calls the biggest solid thing on the counter "the meat", unless it is glowing
   // (that's a grill) or bread-coloured (that's bread)
   const solid = w.meshes.filter((m) => !shapes.get(m).thin).sort((a, b) => shapes.get(b).vol - shapes.get(a).vol);
-  const meat = solid.find((m) => !warmGlow(m.material.emissive) && !isBread(m.material.color.hsl())) || solid[0];
+  // (if everything is bread-coloured or glowing, there is simply no meat)
+  const meat = solid.find((m) => !warmGlow(m.material.emissive) && !isBread(m.material.color.hsl()));
 
-  // 1. light
-  {
-    const total = w.lights.reduce((a, l) => a + l.intensity * l.color.luminance, 0);
-    const warm = w.lights.length > 0 && w.lights.every((l) => l.color.r >= l.color.b);
-    part.light = Math.min(1, total / 1.5) * (warm ? 1 : 0.5);
-    why.light = !w.lights.length ? 'Pitch dark.' : total < 1.5 ? 'Too dark.' : !warm ? 'Cold, blue light.' : 'Nicely lit.';
-  }
+  // light that actually falls on the front of the döner (without a döner: all light counts)
+  const lightTotal = meat ? frontLight(w.lights, meat, boxOf(meat)) : w.lights.reduce((a, l) => a + l.intensity * l.color.luminance, 0);
+  const lightWarm = w.lights.length > 0 && w.lights.every((l) => l.color.r >= l.color.b);
+  const lightPart = Math.min(1, lightTotal / 1.5) * (lightWarm ? 1 : 0.5);
+  const lightWhy = !w.lights.length ? 'Pitch dark.' : lightTotal < 1.5 ? 'The front of the döner is in the dark.' : !lightWarm ? 'Cold, blue light.' : 'Nicely lit.';
+  const brightLight = w.lights.some((l) => l.color.luminance >= 0.6 && l.intensity >= 1);
   if (!meat) {
-    why.colour = why.shape = why.spit = why.heat = why.bread = why.shave = why.spin = 'There is nothing on the counter.';
+    part.light = 0.4 * lightPart;
+    why.light = lightWhy;
+    why.colour = why.shape = why.spit = why.heat = why.bread = why.shave = why.spin = solid.length ? 'Where is the meat? All I see is bread and fire.' : 'There is nothing on the counter.';
   } else {
-    const ms = shapes.get(meat), mc = meat.material.color.hsl(), mp = meat.geometry.parameters;
-    // 2. colour
-    part.colour = (mc.h >= 0.02 && mc.h <= 0.12 ? 0.5 : 0) + (mc.s >= 0.35 ? 0.25 : 0) + (mc.l >= 0.15 && mc.l < 0.45 ? 0.25 : 0);
-    why.colour = isBrown(mc) ? 'Grilled to perfection.' : `The meat is ${meat.material.color.hex === 0xff5500 ? 'orange' : 'the wrong colour'}.`;
-    // 3. shape
+    const ms = shapes.get(meat), mc = meat.material.color.hsl(), mp = meat.geometry.parameters, M = boxOf(meat);
+    // 1. light, and nothing big in front of (or inside) the döner
+    const hider = w.meshes.find((m) => m !== meat && !shapes.get(m).thin && hides(boxOf(m), M));
+    // the döner should stand in the middle of the shop, where the customer looks
+    const { x: mx, y: my, z: mz } = meat.position;
+    const off = Math.max(0, Math.abs(mx) - 1) + Math.max(0, -0.5 - my, my - 1.5) + Math.max(0, Math.abs(mz) - 1);
+    const centred = off === 0 ? 1 : 0.7 * Math.max(0, 1 - off / 2);
+    part.light = 0.4 * lightPart * (brightLight ? 1 : 0.6) + (hider ? 0 : 0.3) + 0.3 * centred;
+    why.light = hider ? 'Something big is hiding the döner.' : centred < 1 ? 'The döner is not in the middle of the shop.' : lightPart < 1 ? lightWhy : !brightLight ? 'Too gloomy in here.' : lightWhy;
+    // 2. colour: brown, and meat does not glow
+    const meatGlows = glows(meat.material.emissive);
+    part.colour = (mc.h >= 0.02 && mc.h <= 0.12 ? 0.4 : 0) + (mc.s >= 0.35 ? 0.2 : 0) + (mc.l >= 0.15 && mc.l < 0.45 ? 0.15 : 0) + (meatGlows ? 0 : 0.25);
+    why.colour = !isBrown(mc) ? `The meat is ${meat.material.color.hex === 0xff5500 ? 'orange' : 'the wrong colour'}.` : meatGlows ? 'Glowing meat? No thanks.' : 'Grilled to perfection.';
+    // 3. shape: a döner cone with sensible proportions, and the biggest thing in the shop
     const cyl = meat.geometry.type === 'CylinderGeometry';
-    part.shape = (cyl ? 0.4 : 0) + (cyl && mp.radiusTop > mp.radiusBottom * 1.2 ? 0.3 : 0) + (ms.halfH * 2 >= 1.8 ? 0.3 : 0);
-    why.shape = part.shape > 0.99 ? 'A proper döner cone.' : !cyl ? `That is a ${meat.geometry.type === 'BoxGeometry' ? 'box' : 'ball'}, not a döner.` : mp.radiusTop <= mp.radiusBottom * 1.2 ? 'The cone is not wider at the top.' : 'Too short for a döner.';
-    // 4. spit
-    // any other cylinder could be a spit: the customer rates how tall, thin and well placed it is
+    const biggest = w.meshes.every((m) => m === meat || shapes.get(m).vol <= ms.vol);
+    const tallOk = M.h >= 1.8 && M.h <= 3.5, baseOk = cyl && mp.radiusBottom >= 0.3, wider = cyl && mp.radiusTop > mp.radiusBottom * 1.2;
+    const heightCredit = tallOk ? 1 : Math.max(0, 1 - Math.min(Math.abs(M.h - 1.8), Math.abs(M.h - 3.5)) / 1.5) * 0.7;
+    const baseCredit = baseOk ? 1 : cyl ? Math.min(0.7, mp.radiusBottom / 0.3 * 0.7) : 0;
+    // a döner's height matters most: it should pay off before the spit and bread are adjusted to it
+    part.shape = (cyl ? 0.15 : 0) + (wider ? 0.15 : 0) + 0.35 * heightCredit + 0.15 * baseCredit + (biggest ? 0.2 : 0);
+    why.shape = part.shape > 0.99 ? 'A proper döner cone.' : !cyl ? `That is a ${meat.geometry.type === 'BoxGeometry' ? 'box' : 'ball'}, not a döner.` : !wider ? 'The cone is not wider at the top.' : !baseOk ? 'The cone ends in a needle point.' : !tallOk ? 'Wrong height for a döner.' : 'Something else is bigger than the döner.';
+    // 4. spit: thin, vertical, through the middle and sticking out at the top
     const rods = w.meshes.filter((m) => m !== meat && m.geometry.type === 'CylinderGeometry');
     const spitScore = (s) => {
-      const p = s.geometry.parameters, r = Math.max(p.radiusTop, p.radiusBottom);
-      const tall = Math.min(1, p.height / 2.5), thin = r <= 0.1 ? 1 : r <= 0.5 ? 0.4 : 0;
-      const centred = flat(s, meat) < 0.2 ? 1 : 0, through = Math.abs(s.position.y - meat.position.y) < p.height / 2 + ms.halfH - 0.2 ? 1 : 0;
+      const p = s.geometry.parameters, r = Math.max(p.radiusTop, p.radiusBottom), S = boxOf(s);
+      const tall = Math.min(1, p.height / (M.h + 0.4)), thin = r <= 0.1 ? 1 : r <= 0.5 ? 0.4 : 0;
+      const centred = flat(s, meat) < 0.2 ? 1 : 0;
+      const stickOut = S.y1 - (M.y1 + 0.1);   // how far it sticks out above the meat
+      const through = stickOut >= 0 && S.y0 <= M.y0 + 0.2 ? 1 : ov(S.y0, S.y1, M.y0, M.y1) > 0 ? 0.4 + 0.4 * Math.max(0, Math.min(1, 1 + stickOut / 1.5)) : 0;
       return 0.2 * tall + 0.2 * thin + 0.3 * centred * thin + 0.3 * through * thin;
     };
     part.spit = rods.length ? Math.max(...rods.map(spitScore)) : 0;
-    why.spit = part.spit > 0.99 ? 'Spit is in place.' : !rods.length ? 'Nothing holds the meat up.' : part.spit < 0.5 ? 'That is not a spit, it is a pillar.' : 'The spit misses the meat.';
-    // 5. heat
+    why.spit = part.spit > 0.99 ? 'Spit is in place.' : !rods.length ? 'Nothing holds the meat up.' : part.spit < 0.5 ? 'That is not a spit, it is a pillar.' : 'The spit does not go through the meat.';
+    // 5. heat: a glowing grill behind the meat, close but not touching, sensibly sized
     const grills = w.meshes.filter((m) => m !== meat && warmGlow(m.material.emissive));
     const heatScore = (g) => {
-      const d = flat(g, meat);
-      const beside = d < 0.6 ? d / 0.6 * 0.8 : d <= 2.2 ? 1 : Math.max(0, 1 - (d - 2.2) / 2);   // a little credit for moving it part of the way
-      return 0.4 + 0.3 * beside + (Math.abs(g.position.y - meat.position.y) < 0.8 ? 0.3 : 0);
+      const G = boxOf(g), gap = M.z0 - G.z1;
+      const behind = gap >= 0.05 ? 1 : 0.7 * Math.max(0, Math.min(1, 1 + (gap - 0.05) / 2));   // a little credit for moving it back part of the way
+      const apart = touches(G, M) ? 0 : 1, level = Math.abs(g.position.y - meat.position.y) < 0.8 ? 1 : 0;
+      // a panel, not a stick: wide and tall enough, but not bigger than the döner
+      const wide = G.w > 3 ? 0.5 : Math.min(1, G.w / 0.8), tall = G.h > 1.6 * M.h ? 0.5 : Math.min(1, G.h / 0.8);
+      const near = gap <= 2 ? 1 : 0;
+      const side = Math.abs(g.position.x - meat.position.x), aligned = side <= 0.6 ? 1 : 0.7 * Math.max(0, 1 - (side - 0.6) / 2);
+      return 0.15 + 0.2 * behind + 0.1 * apart + 0.1 * level + 0.15 * wide + 0.1 * tall + 0.1 * near + 0.1 * aligned;
     };
     part.heat = grills.length ? Math.max(...grills.map(heatScore)) : 0;
-    why.heat = part.heat > 0.99 ? 'Hot grill, perfect.' : grills.length ? 'The grill is in the wrong place.' : 'Nothing is cooking the meat.';
-    // 6. bread
+    why.heat = part.heat > 0.99 ? 'Hot grill behind the meat, perfect.' : grills.length ? 'The grill is in the wrong place (or the wrong size).' : 'Nothing is cooking the meat.';
+    // 6. bread: bread-coloured, bread-sized, right under the meat
     const breads = w.meshes.filter((m) => m !== meat && !shapes.get(m).thin && isBread(m.material.color.hsl()));
-    const breadScore = (b) => 0.4 + 0.3 * Math.min(1, Math.max(0, (meat.position.y - b.position.y) / 0.8)) * (b.position.y < meat.position.y - 0.8 ? 1 : 0.8) + (flat(b, meat) <= 2 ? 0.3 : 0);
+    const breadScore = (b) => {
+      const B = boxOf(b);
+      const below = B.y1 <= M.y0 + 0.15 ? 1 : Math.min(0.8, Math.max(0, (meat.position.y - b.position.y) / (M.h / 2 + B.h / 2)));
+      const d = flat(b, meat), under = d <= 0.8 ? 1 : 0.7 * Math.max(0, 1 - (d - 0.8) / 1.5);
+      const sized = B.w >= 0.6 && B.w <= 2.6 && B.h <= B.w ? 1 : 0, apart = touches(B, M, 0.2) ? 0 : 1;
+      return 0.3 + 0.25 * below + 0.15 * under + 0.15 * sized + 0.15 * apart;
+    };
     part.bread = breads.length ? Math.max(...breads.map(breadScore)) : 0;
-    why.bread = part.bread > 0.99 ? 'Fresh bread below.' : breads.length ? 'The bread is not below the meat.' : 'No bread.';
+    why.bread = part.bread > 0.99 ? 'Fresh bread below.' : breads.length ? 'The bread is not under the meat (or not bread-sized).' : 'No bread.';
     // 7. knife
     part.shave = w.knives.length ? (w.knives.includes(meat) ? 1 : 0.5) : 0;
     why.shave = part.shave > 0.99 ? 'Thin slices fall into the bread.' : w.knives.length ? 'The knife cuts the wrong thing.' : 'Nobody cuts the meat.';

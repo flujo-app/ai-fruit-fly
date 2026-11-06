@@ -7,14 +7,56 @@ const $ = (id) => document.getElementById(id);
 const LABS = 8;
 const MIGRATE_EVERY = 2;
 const ATTEMPTS = 4;
-// ?demo: start training by itself and stop a little after the first perfect döner (for recordings)
-const DEMO = new URLSearchParams(location.search).has('demo');
+// ?demo: start training by itself and stop a little after the first perfect döner (for recordings).
+// In demo mode the whole training state is saved to the local server every 20 rounds, and
+// ?demo&resume continues from the last save (so a long run can be recorded in pieces).
+const PARAMS = new URLSearchParams(location.search);
+const DEMO = PARAMS.has('demo');
+const RESUME = PARAMS.has('resume');
+const SAVE_EVERY = DEMO ? 20 : 0;
 const DEMO_AFTER = 40;
+
+async function saveState() {
+  const parts = await Promise.all(workers.map((w) => call(w, { type: 'exportAll' })));
+  const meta = { gen, firstSolved, programs, tokensTyped, history, perLab, labs: LABS, wLen: parts[0].W.length, banner: $('banner').innerHTML };
+  const metaBytes = new TextEncoder().encode(JSON.stringify(meta));
+  const head = 4 + Math.ceil(metaBytes.length / 4) * 4;
+  const buf = new ArrayBuffer(head + LABS * (meta.wLen + perLab) * 4);
+  new Uint32Array(buf, 0, 1)[0] = metaBytes.length;
+  new Uint8Array(buf, 4, metaBytes.length).set(metaBytes);
+  parts.forEach((p, lab) => {
+    new Float32Array(buf, head + lab * meta.wLen * 4, meta.wLen).set(p.W);
+    new Float32Array(buf, head + LABS * meta.wLen * 4 + lab * perLab * 4, perLab).set(p.baseline);
+  });
+  await fetch(`/state/demo?gen=${gen}`, { method: 'POST', body: buf }).catch(() => {});
+}
+
+async function loadState() {
+  const r = await fetch('/state/demo').catch(() => null);
+  if (!r || !r.ok) return false;
+  const buf = await r.arrayBuffer();
+  const len = new Uint32Array(buf, 0, 1)[0];
+  const meta = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, len)));
+  if (meta.perLab !== perLab || meta.labs !== LABS) return false;
+  const head = 4 + Math.ceil(len / 4) * 4;
+  await Promise.all(workers.map((w, lab) => {
+    const W = new Float32Array(buf.slice(head + lab * meta.wLen * 4, head + (lab + 1) * meta.wLen * 4));
+    const baseline = new Float32Array(buf.slice(head + LABS * meta.wLen * 4 + lab * perLab * 4, head + LABS * meta.wLen * 4 + (lab + 1) * perLab * 4));
+    return call(w, { type: 'importAll', W, baseline, gen: meta.gen }, [W.buffer, baseline.buffer]);
+  }));
+  ({ gen, firstSolved, programs, tokensTyped, history } = meta);
+  if (meta.banner) { $('banner').innerHTML = meta.banner; $('banner').classList.add('show'); }
+  if (firstSolved > 0) $('milestone').textContent = `first perfect döner: generation ${firstSolved}`;
+  $('st-gen').textContent = gen.toLocaleString();
+  drawChart();
+  return true;
+}
 
 function celebrate(best) {
   const el = $('banner');
   el.innerHTML = `<b>Generation ${gen}:</b> fly ${best.fly + 1} in lab ${best.lab + 1} just typed a döner app that passes all 8 tests!`;
   el.classList.add('show');
+  if (DEMO) fetch(`/ping?solved=${gen}`).catch(() => {});
 }
 
 // ---------------------------------------------------------------- workers (one lab each)
@@ -102,6 +144,7 @@ async function step() {
     running = false;
     setRunLabel();
     document.title = 'Fly Gym (done)';
+    fetch(`/ping?done=${gen}`).catch(() => {});
   }
   if (firstSolved < 0 && history.length > 120) {
     const before = Math.max(...history.slice(-120, -60).map((h) => h.best));
@@ -122,6 +165,7 @@ async function step() {
   updateStats(best, sum / n, solved);
   await showChampion(best);
   drawChart();
+  if (SAVE_EVERY && gen % SAVE_EVERY === 0) await saveState();
   busy = false;
 }
 
@@ -282,6 +326,11 @@ function frame(t) {
 requestAnimationFrame(frame);
 
 setup()
-  .then(() => { if (DEMO) setTimeout(() => { running = true; setRunLabel(); loop(); }, 1500); })
+  .then(async () => {
+    if (!DEMO) return;
+    const resumed = RESUME && (await loadState());
+    fetch(`/ping?${resumed ? 'resumed' : 'started'}=${gen}`).catch(() => {});   // marks the moment in the server log
+    setTimeout(() => { running = true; setRunLabel(); loop(); }, resumed ? 0 : 1500);
+  })
   .catch((err) => { $('code-note').textContent = `Could not start: ${err.message}`; console.error(err); });
 window.__gym = { get gen() { return gen; }, get history() { return history; }, get firstSolved() { return firstSolved; } };

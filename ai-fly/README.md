@@ -54,8 +54,11 @@ this simple model to fire, so the fly's liking is read from how hard its learnin
 ## Fly Gym (fly-gym.html): hard mode, mass training
 
 Add `?demo` to the address (`fly-gym.html?demo`) and training starts by itself, then stops 40
-rounds after the first perfect döner. That's handy for recordings. A recorded run is in
-`../media/fly-gym-demo.mp4`, and the winning program is in `examples/doener-by-1024-flies.html`.
+rounds after the first perfect döner. In demo mode the page also saves all fly memories to the
+local server (`serve.py`, folder `.state`) every 20 rounds, and `fly-gym.html?demo&resume`
+continues from the last save. That way a long run can be recorded in pieces. A recorded run is in
+`../media/fly-gym-demo.mp4`, and its winning program is in `examples/doener-by-1024-flies.html`
+(add `?side` to that address for a side view).
 
 Here the flies get no ready-made code blocks. They type a three.js program **one token at a time**:
 keywords, names, numbers, colours and symbols. Open <http://127.0.0.1:8765/fly-gym.html> and press
@@ -69,21 +72,47 @@ keywords, names, numbers, colours and symbols. Open <http://127.0.0.1:8765/fly-g
   "approach" and "avoid" output neurons. That's about 41 KB per fly.
 - **Smells:** what a fly smells at a decision is "which object am I describing (or which line) +
   which blank + this token". Which Kenyon cells fire for each smell was computed in advance with the
-  real spiking model (`tools/make_fingerprints.mjs`, 1,274 smells, about 3% of the cells each).
+  real spiking model (`tools/make_fingerprints.mjs`, 1,328 smells, about 3% of the cells each).
 - **Learning:** each round, every fly writes 4 programs. A stand-in for three.js runs each one and
   the customer gives a single rating out of 8, with partial credit. The fly's best program earns
-  sugar and its worst earns bitter. Each lab copies its best flies' memories over its weakest
-  ones, and the labs swap their best fly every 2 rounds.
-- **Results** (`node tools/train_gym.mjs 512 300`): random typing averages 0.4 of 8 and never
-  passes more than 3 tests. With 512 flies, 5 of 8 runs produced flies that pass all 8 tests,
-  first in round 94 to 238. The other runs got stuck between 7.5 and 7.96. With 1,024 flies,
-  5 of 6 runs succeeded (first perfect döner in round 127 to 181), and with labs swapping flies
-  every 2 rounds, 2 of 2. In the browser on an 8-core PC, it runs at about 3.5 rounds per second.
-  One test run had its first perfect döner in round 280, after 71 seconds. If a run stays stuck,
-  press "New flies". Three things made it work:
-  1. Each fly compares its own attempts, which gives a much clearer signal than one attempt per round.
-  2. Smells are about objects instead of line numbers, so inserting a line doesn't scramble the memory.
-  3. The customer gives partial credit, for example for "almost a spit" or "the grill moved part of the way".
+  sugar and its worst earns bitter, but only for the tokens where the two programs differ. Each
+  decision has a 3% chance of being a random token (curiosity). Each lab copies its best flies'
+  memories over its weakest ones, and the labs swap their best fly every 2 rounds.
+- **Results** (`node tools/train_gym.mjs 1024 600 islands=8 migrateEvery=2`): random typing
+  averages about 0.7 of 8 and never passes more than 4 tests. Against the final, picky customer,
+  5 of 6 headless runs produced a döner that passes all 8 tests, first in round 244 to 501, and
+  so did all 4 runs with the browser's 8-lab setup. In the browser on an 8-core PC, training runs
+  at about 2 rounds per second. The recorded run had its first perfect döner in round 350, after
+  about 3 minutes. If a run stays stuck, press "New flies". What made it work:
+  1. Each fly compares its own attempts: much clearer than one attempt per round.
+  2. Only the tokens that differ between the best and worst attempt are rewarded or punished, so good habits aren't worn down.
+  3. Smells are about objects instead of line numbers, so inserting a line doesn't scramble the memory.
+  4. A little curiosity, so the flies keep trying new tokens after they become confident.
+  5. The customer gives smooth partial credit, for example for "almost a spit" or "the grill moved part of the way".
+  6. Enough position choices: the grill can only fit behind wider döners if things can move far enough back.
+
+**The loopholes, and the pickier customer.** The first customer only checked a list of facts: a
+brown cone exists, something glows near it, something bread-coloured is lower, and so on. The flies
+passed all 8 tests with a giant glowing ball that swallowed half of a green-glowing, needle-pointed
+cone, standing on a huge "bread tent" (`examples/first-try-glowing-ball.html`). Nothing in the tests
+forbade it. That's a classic case of a learner exploiting the gaps in its reward. The customer was
+tightened step by step, and the flies found a new gap each time:
+1. They made everything wheat-coloured, so the bread and the grill could double as "meat".
+2. They used a tiny glowing stick far off to the side as the "grill", put the döner near the
+   top edge and lit it with dim brown lamps.
+3. They put the lamp at its default position, inside the meat, so the döner was pitch black.
+
+The customer now checks that:
+- the döner stands in the middle, is brightly lit **on the side facing the customer** (a simple
+  light calculation), and nothing big hides it;
+- the meat is brown, doesn't glow, is the biggest thing in the shop and doesn't end in a needle point;
+- the spit is thin, vertical and sticks out at the top;
+- the grill is a glowing panel right behind the meat, at a sensible size and not touching it;
+- the bread is bread-sized and directly under the meat.
+
+Run `node tools/test_judge.mjs` to check that a proper döner passes and the loophole döners fail.
+One gap is still open: nothing says a döner must be taller than it is wide. The recorded flies'
+döner passes all 8 tests, but it looks a bit like a lampshade.
 
 **Hand-made:** the token rules, the numbers and colours on offer, the `knife()` helper and the 8
 tests. **Real:** the learning-centre wiring and how dopamine changes it. Every token in the winning
