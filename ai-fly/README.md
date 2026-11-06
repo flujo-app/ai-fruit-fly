@@ -51,6 +51,37 @@ blocks earn sugar. Simplification: the learning centre's output neurons get too 
 this simple model to fire, so the fly's liking is read from how hard its learning cells push the
 "approach" outputs against the "avoid" outputs.
 
+## Fly Gym (fly-gym.html): hard mode, mass training
+
+Here the flies get no ready-made code blocks. They type a three.js program **one token at a time**:
+keywords, names, numbers, colours and symbols. Open <http://127.0.0.1:8765/fly-gym.html> and press
+**Start training**.
+
+- **Autocomplete:** at each spot it only offers tokens that are legal there, like a code editor.
+  Where only one token is legal it is typed automatically. Everywhere else the fly decides, which
+  is about 50 to 70 decisions per program. Every program it writes therefore runs.
+- **Many flies:** 1,024 flies train at once, in 8 labs of 128 (one background worker per lab). Each
+  fly has its **own copy** of the learning-centre memory: 5,177 Kenyon cells and their push onto the
+  "approach" and "avoid" output neurons. That's about 41 KB per fly.
+- **Smells:** what a fly smells at a decision is "which object am I describing (or which line) +
+  which blank + this token". Which Kenyon cells fire for each smell was computed in advance with the
+  real spiking model (`tools/make_fingerprints.mjs`, 1,274 smells, about 3% of the cells each).
+- **Learning:** each round, every fly writes 4 programs. A stand-in for three.js runs each one and
+  the customer gives a single rating out of 8, with partial credit. The fly's best program earns
+  sugar and its worst earns bitter. Each lab copies its best flies' memories over its weakest
+  ones, and the labs swap their best fly every 5 rounds.
+- **Results** (`node tools/train_gym.mjs 512 300`): random typing averages 0.4 of 8 and never
+  passes more than 3 tests. With 512 flies, 5 of 8 runs produced flies that pass all 8 tests,
+  first in round 94 to 238. The other runs got stuck between 7.5 and 7.96. Three things made it
+  work:
+  1. Each fly compares its own attempts, which gives a much clearer signal than one attempt per round.
+  2. Smells are about objects instead of line numbers, so inserting a line doesn't scramble the memory.
+  3. The customer gives partial credit, for example for "almost a spit" or "the grill moved part of the way".
+
+**Hand-made:** the token rules, the numbers and colours on offer, the `knife()` helper and the 8
+tests. **Real:** the learning-centre wiring and how dopamine changes it. Every token in the winning
+programs was chosen by a fly.
+
 ## What's real and what's hand-made
 
 **Real:** the wiring, the brain model (Shiu et al., *Nature* 2024, with the paper's settings),
@@ -86,6 +117,12 @@ result: about 400 neurons become active and the feeding neuron MN9 fires.
 - `js/main.js`: senses, behaviour, camera and controls
 - `data/`: the packed brain (made by `tools/pack_brain.py`) and learning centre (made by `tools/pack_mushroom_body.py`)
 - `doener.html`, `js/doener/`, `js/mushroom-body.js`, `js/mb-worker.js`: the Döner Dev Fly page
+- `fly-gym.html`, `js/gym/`: the Fly Gym (hard mode): the token rules (`grammar.js`), the fast
+  three.js stand-in and customer tests (`judge.js`), the fly population (`population.js`), one
+  lab per worker (`gym-worker.js`), the wall of thumbnails (`wall.js`) and the real app template
+  (`app-template.js`)
+- `data/gym.bin`, `data/gym.json`: precomputed smell fingerprints (`tools/make_fingerprints.mjs`)
+- `tools/train_gym.mjs`: headless Fly Gym training, for experiments
 
 To rebuild `data/`, put these files in `../raw_data`:
 
