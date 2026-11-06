@@ -77,7 +77,10 @@ keywords, names, numbers, colours and symbols. Open <http://127.0.0.1:8765/fly-g
   smell was computed in advance with the real spiking model (`tools/make_fingerprints.mjs`, 1,448
   smells, about 3% of the cells each).
 - **Learning:** each round, every fly writes 4 programs. A stand-in for three.js runs each one and
-  the customer gives a single rating out of 8, with partial credit. The fly's best program earns
+  the customer gives a single rating out of 8, with partial credit. (The stand-in reads the flies'
+  programs step by step instead of compiling them: that is about 3 times faster, and a browser
+  driven by a test tool kept every compiled program in memory, about 12,000 per second, until the
+  page crashed.) The fly's best program earns
   sugar and its worst earns bitter, but only for the tokens where the two programs differ. Each
   decision has a 3% chance of being a random token (curiosity). Each lab copies its best flies'
   memories over its weakest ones, and the labs swap their best fly every 2 rounds.
@@ -158,8 +161,8 @@ programs was chosen by a fly.
 The same training as the Fly Gym, as an interactive three.js world. 1,024 flies (8 labs = 8 teams
 of 128) sit at 1,024 desks in an open-plan office. Each one types at its own computer.
 `../media/cubicles-demo.mp4` is one unedited take recorded by the page itself
-(`cubicles.html?autopilot&record&size=1280x720`): the first perfect döner came in round 424, about
-2.5 minutes in.
+(`cubicles.html?autopilot&record&size=1920x1080`, 86 seconds, a smooth 30 frames per second): the
+first perfect döner came in round 143.
 
 - **Walk around:** WASD (or the arrow keys), Shift to run, the mouse to look (click into the
   view first). You can't walk through cubicles; a ramp leads up to the supervisor deck.
@@ -181,16 +184,23 @@ of 128) sit at 1,024 desks in an open-plan office. Each one types at its own com
 - **Options:** `?autostart` starts training at full speed, `?record` records from the start, and
   `?autopilot` lets the camera walk by itself (intro, a tour while they train, the walk to the
   winner, sugar, contract, the flight to management) and then stops the recording. Use
-  `cubicles.html?autopilot&record` for an unattended demo video. `?size=1280x720` always draws
-  (and records) at that size, `?cam=x,z,yaw,pitch,height` places the camera, and `?testparty`
-  pretends round 20's best fly won (to try the party quickly).
+  `cubicles.html?autopilot&record&size=1920x1080` for an unattended demo video. `?size=1920x1080`
+  always draws (and records) at that size, `?cam=x,z,yaw,pitch,height` places the camera,
+  `?testparty` pretends round 20's best fly won (to try the party quickly), `?stuckafter=300`
+  sets how many rounds without progress bring new flies, and `?off=near,atlas,screen,hud,render`
+  switches parts of the drawing off (to find out what makes a computer slow).
 - **Recording:** REC (or R) records the 3D view, including the on-screen text, straight from the
-  canvas. Every 2 seconds the video so far is sent to `serve.py`, which adds it to
-  `ai-fly/recordings/<name>.webm`, so there is nothing to stitch together. Without the local
-  server, the video is downloaded when you stop. It records at 24 frames per second; in a
-  browser without a hardware video encoder, record at 1280x720 (at 1920x1080 the test browser
-  ran out of memory after a few minutes). The file can't be scrubbed until it's repacked
-  (`ffmpeg -i in.webm -c copy out.webm`) or converted to MP4.
+  canvas, as it happens (24 frames per second). Every 2 seconds the video so far is sent to
+  `serve.py`, which adds it to `ai-fly/recordings/<name>.webm`, so there is nothing to stitch
+  together. Without the local server, the video is downloaded when you stop.
+- **Smooth autopilot videos:** with `?autopilot&record`, the page records frame by frame instead.
+  Every drawn frame becomes exactly one video frame, 1/30 s apart, and everything that moves in the
+  office (camera, confetti, typing, messages) also moves on by exactly 1/30 s per frame. So the
+  video stays smooth even if the computer only manages a few frames per second; only the
+  training keeps its real speed. The browser's own video encoder (WebCodecs) compresses the
+  frames, webm-muxer packs them into the file, and if the encoder falls behind, the page waits for
+  it. The file can't be scrubbed until it's repacked (`ffmpeg -i in.webm -c copy out.webm`) or
+  converted to MP4.
 
 ## What's real and what's hand-made
 
@@ -236,7 +246,8 @@ result: about 400 neurons become active and the feeding neuron MN9 fires.
 - `cubicles.html`, `css/cubicles.css`, `js/cubicles/`: the office: layout, walking and the shortest
   way along the aisles (`layout.js`, `player.js`), the building and the 1,024 cubicles
   (`office.js`), the flies near and far (`flies.js`), the supervisor deck (`supervisor.js`), the
-  winner's party (`party.js`), on-screen text (`hud.js`), recording (`recorder.js`) and `main.js`
+  winner's party (`party.js`), on-screen text (`hud.js`), recording (`recorder.js`), the office
+  clock for frame-by-frame videos (`clock.js`) and `main.js`
 - `data/gym.bin`, `data/gym.json`: precomputed smell fingerprints (`tools/make_fingerprints.mjs`)
 - `tools/train_gym.mjs`: headless Fly Gym training, for experiments
 
@@ -260,3 +271,4 @@ uv run --with pandas --with pyarrow --with numpy python tools/pack_brain.py
   **CC BY-NC 4.0**, so non-commercial use only, with credit.
 - Brain model and data packaging: Shiu et al. 2024, MIT licence.
 - 3D engine: three.js, MIT licence.
+- Video files in Cubicles: webm-muxer by Vanilagy, MIT licence.

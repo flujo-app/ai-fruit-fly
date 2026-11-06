@@ -64,3 +64,80 @@ export class Recorder {
     return { where: `your downloads (${this.name}.webm)`, seconds };
   }
 }
+
+// Frame-by-frame recording for unattended videos: every drawn frame becomes exactly one video frame,
+// 1/30 s apart, however long it took to draw (the office clock moves on by the same 1/30 s). The
+// browser's own video encoder (WebCodecs) compresses the frames and webm-muxer (MIT licence) packs
+// them into a WebM file, which goes to the local server piece by piece like the recorder above.
+// If the encoder falls behind, the page waits for it instead of piling frames up in memory.
+export class FrameRecorder {
+  static get supported() { return typeof VideoEncoder !== 'undefined' && typeof VideoFrame !== 'undefined'; }
+
+  constructor(canvas, fps = 30) {
+    this.canvas = canvas;
+    this.fps = fps;
+    this.encoder = null;
+    this.upload = Promise.resolve(true);
+  }
+
+  get active() { return !!this.encoder; }
+  get busy() { return !!this.encoder && this.encoder.encodeQueueSize > 2; }
+
+  async start(name = `cubicles-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}`) {
+    if (this.encoder) return;
+    const { Muxer, StreamTarget } = await import('webm-muxer');
+    const width = this.canvas.width & ~1, height = this.canvas.height & ~1;
+    const bitrate = Math.round(Math.min(16e6, (width * height * this.fps) / 4));
+    let config = null;
+    for (const codec of ['vp8', 'vp09.00.10.08']) {
+      const c = { codec, width, height, bitrate, framerate: this.fps };
+      if ((await VideoEncoder.isConfigSupported(c)).supported) { config = c; break; }
+    }
+    if (!config) throw new Error('this browser cannot encode video frames');
+    this.name = name;
+    this.part = 0;
+    this.frame = 0;
+    this.muxer = new Muxer({
+      target: new StreamTarget({ onData: (data, position) => this.send(data.slice(), position), chunked: true, chunkSize: 2 ** 20 }),
+      video: { codec: config.codec === 'vp8' ? 'V_VP8' : 'V_VP9', width, height, frameRate: this.fps },
+      type: 'webm', streaming: true, firstTimestampBehavior: 'offset',
+    });
+    this.encoder = new VideoEncoder({
+      output: (chunk, meta) => this.muxer.addVideoChunk(chunk, meta),
+      error: (e) => console.error('video encoder:', e),
+    });
+    this.encoder.configure(config);
+    fetch(`/ping?recording=${name}&codec=${config.codec}&size=${width}x${height}`).catch(() => {});
+  }
+
+  // call right after drawing a frame
+  capture() {
+    if (!this.encoder) return;
+    const us = 1e6 / this.fps;
+    const frame = new VideoFrame(this.canvas, { timestamp: Math.round(this.frame * us), duration: Math.round(us) });
+    this.encoder.encode(frame, { keyFrame: this.frame % (this.fps * 2) === 0 });
+    frame.close();
+    this.frame++;
+  }
+
+  // each piece says where in the file it belongs (in streaming mode that is always the end)
+  send(data, position) {
+    const part = this.part++;
+    this.upload = this.upload.then(async (ok) => {
+      if (!ok) return false;
+      try { return (await fetch(`/recording/${this.name}?part=${part}&at=${position}`, { method: 'POST', body: data })).ok; } catch { return false; }
+    });
+  }
+
+  async stop() {
+    if (!this.encoder) return null;
+    const enc = this.encoder;
+    this.encoder = null;
+    await enc.flush();
+    enc.close();
+    this.muxer.finalize();
+    const ok = await this.upload;
+    if (ok) await fetch(`/recording/${this.name}?done=1`, { method: 'POST', body: '' }).catch(() => {});
+    return { where: ok ? `ai-fly/recordings/${this.name}.webm` : 'nowhere (the local server did not answer)', seconds: this.frame / this.fps };
+  }
+}

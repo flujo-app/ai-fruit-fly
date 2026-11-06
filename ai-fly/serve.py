@@ -69,7 +69,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
             q = urllib.parse.parse_qs(url.query)
             if q.get("part") == ["0"] and os.path.exists(out):
                 os.remove(out)   # a new recording with the same name starts over
-            if data:
+            if data and "at" in q:
+                # a piece that knows its byte position in the file
+                with open(out, "r+b" if os.path.exists(out) else "wb") as f:
+                    f.seek(int(q["at"][0]))
+                    f.write(data)
+            elif data:
                 with open(out, "ab") as f:
                     f.write(data)
             if "done" in q:

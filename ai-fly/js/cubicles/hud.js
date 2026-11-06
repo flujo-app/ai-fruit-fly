@@ -1,6 +1,7 @@
 // Text on top of the 3D view (status line, crosshair, prompts, messages, captions). It is drawn into
 // the WebGL picture itself, so a recording of the canvas includes it.
 import * as THREE from 'three';
+import { clock } from './clock.js';
 
 export class Hud {
   constructor() {
@@ -30,7 +31,8 @@ export class Hud {
   }
 
   toast(text, seconds = 5) {
-    this.toasts.push({ text, until: performance.now() + seconds * 1000, at: performance.now() });
+    const now = clock.now();
+    this.toasts.push({ text, until: now + seconds * 1000, at: now });
     if (this.toasts.length > 3) this.toasts.shift();
     this.dirty = true;
   }
@@ -38,7 +40,8 @@ export class Hud {
   render(renderer, now) {
     this.toasts = this.toasts.filter((t) => t.until > now);
     const animating = this.toasts.length || this.state.rec;
-    if (this.dirty || (animating && now - this.lastDraw > 66)) this.draw(now);
+    // redraw for fading messages a few times a second, for the REC blink twice a second
+    if (this.dirty || (animating && now - this.lastDraw > (this.toasts.length ? 120 : 500))) this.draw(now);
     renderer.render(this.scene, this.camera);
   }
 

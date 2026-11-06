@@ -10,18 +10,21 @@ import { Supervisor, BUTTONS } from './supervisor.js';
 import { Player, EYE } from './player.js';
 import { Party } from './party.js';
 import { Hud } from './hud.js';
-import { Recorder } from './recorder.js';
+import { Recorder, FrameRecorder } from './recorder.js';
+import { clock, wait } from './clock.js';
 import { buildGrid, START, floorHeight, pathFrom, cubicle, teamOrigin, AISLE, CUB } from './layout.js';
 
 const $ = (id) => document.getElementById(id);
 const P = new URLSearchParams(location.search);
 const AUTOPILOT = P.has('autopilot');
+// ?off=near,atlas,screen,hud: switch parts off (for hunting performance problems)
+const OFF = new Set((P.get('off') || '').split(','));
 const LABS = 8, PER_LAB = 128;
 const PERIOD = { 1: 3500, 4: 900, max: 0 };            // milliseconds per generation (0 = as fast as possible)
 const SPEED_LABEL = { 1: '1×', 4: '4×', max: 'MAX' };
-const STUCK_AFTER = 300;   // rounds without a better best score before the flies are replaced
+const STUCK_AFTER = Number(P.get('stuckafter')) || 300;   // rounds without a better best score before the flies are replaced
 let restarts = 0;
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));   // real time (for polling)
 
 // ---------------------------------------------------------------- the 3D world
 const canvas = $('view');
@@ -47,7 +50,10 @@ const player = new Player(camera, canvas, grid);
 player.setPose(START.x, START.z, START.yaw, 0.17);
 const party = new Party(scene, office, workers, grid);
 const hud = new Hud();
-const recorder = new Recorder(canvas);
+// ?autopilot&record: frame by frame (smooth on any machine); otherwise REC records in real time
+const FRAMES = P.has('autopilot') && P.has('record') && FrameRecorder.supported;
+const recorder = FRAMES ? new FrameRecorder(canvas, 30) : new Recorder(canvas);
+if (FRAMES) clock.useFrames(30);
 const near = Array.from({ length: 8 }, () => new NearDesk(scene, office));
 
 // ?size=1920x1080: always draw (and record) at this size, whatever the window size
@@ -81,19 +87,19 @@ function setSpeed(id) {
 async function loop() {
   looping = true;
   while (speed !== 'pause') {
-    const t0 = performance.now();
+    const t0 = clock.now(), real0 = performance.now();
     const out = await runner.step();
-    lastStepMs = performance.now() - t0;
+    lastStepMs = performance.now() - real0;
     onStep(out);
     // at the slower speeds, let each round last a while (and stop waiting as soon as the speed changes)
-    while (speed !== 'pause' && PERIOD[speed] && performance.now() - t0 < PERIOD[speed]) await sleep(40);
+    while (speed !== 'pause' && PERIOD[speed] && clock.now() - t0 < PERIOD[speed]) await sleep(20);
   }
   looping = false;
 }
 
 function onStep(out) {
   last = out;
-  genStart = performance.now();
+  genStart = clock.now();
   genDuration = PERIOD[speed] || Math.max(250, lastStepMs);
   atlasDirty = true;
   screenDirty = true;
@@ -121,7 +127,7 @@ function drawScreen() {
   supervisor.draw({
     paused: speed === 'pause', gen: runner.gen, speedLabel: SPEED_LABEL[speed], genPerSec: runner.speed,
     best: last && last.best.score, mean: last && last.mean, solved: last && last.solved, programs: runner.programs,
-    results: last && last.results, history: runner.history, champ: last && last.best, banner, recording: recorder.active, time: performance.now() / 1000,
+    results: last && last.results, history: runner.history, champ: last && last.best, banner, recording: recorder.active, time: clock.now() / 1000,
   });
 }
 
@@ -193,7 +199,7 @@ function startParty(best) {
   banner = `Generation ${runner.gen}: ${name} typed a perfect döner! Follow the path on the floor.`;
   setSpeed('1');
   party.start(best.lab, best.fly, `FLY ${best.fly + 1} · LAB ${best.lab + 1} · 8/8`);
-  party.desk.setCode({ tokens: best.tokens, score: best.score, passed: best.passed, label: `Lab ${best.lab + 1} · fly ${best.fly + 1} · PERFECT` }, performance.now(), 0);
+  party.desk.setCode({ tokens: best.tokens, score: best.score, passed: best.passed, label: `Lab ${best.lab + 1} · fly ${best.fly + 1} · PERFECT` }, clock.now(), 0);
   hud.toast(`Generation ${runner.gen}: ${name} typed a döner app that passes all 8 tests!`, 8);
   hud.toast('Speed is back to 1×. Follow the arrows on the floor to the winner.', 8);
   fetch(`/ping?solved=${runner.gen}`).catch(() => {});
@@ -281,7 +287,11 @@ async function toggleRecording() {
     hud.set({ rec: false });
     if (r) hud.toast(`Saved ${Math.round(r.seconds)} s of video: ${r.where}`, 8);
   } else {
-    recorder.start();
+    Promise.resolve(recorder.start()).catch((err) => {
+      hud.set({ rec: false });
+      hud.toast(`Recording failed: ${err.message}`, 8);
+      fetch(`/ping?recorderror=${encodeURIComponent(err.message)}`).catch(() => {});
+    });
     supervisor.setActive([speed, 'rec']);
     hud.set({ rec: true });
     hud.toast('Recording. Press REC (or R) again to stop.', 4);
@@ -291,7 +301,7 @@ async function toggleRecording() {
 
 // ---------------------------------------------------------------- autopilot (for unattended demo videos)
 const tweens = [];
-function tween(seconds, fn) { return new Promise((resolve) => tweens.push({ t0: performance.now(), dur: seconds * 1000, fn, resolve })); }
+function tween(seconds, fn) { return new Promise((resolve) => tweens.push({ t0: clock.now(), dur: seconds * 1000, fn, resolve })); }
 const ease = (k) => (k < 0.5 ? 2 * k * k : 1 - (-2 * k + 2) ** 2 / 2);
 const lerpAngle = (a, b, k) => a + (((b - a + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI) * k;
 function aimAt(x, y, z) {
@@ -314,13 +324,13 @@ async function autopilot() {
   player.autopilot = true;
   hud.set({ help: '', crosshair: false });
   caption('Cubicles: 1,024 fruit fly brains at 1,024 desks, learning to type a döner app');
-  await sleep(4000);
+  await wait(4000);
   const mx = buttonPos('max');
   await glide({ x: player.x, y: player.y, z: player.z, ...aimAt(mx.x, mx.y, mx.z) }, 1.4);
   caption('The supervisor presses MAX');
-  await sleep(500);
+  await wait(500);
   pressButton('max');
-  await sleep(1300);
+  await wait(1300);
   // fly over the office while the flies train
   const legs = [
     [{ x: 0, y: 4.6, z: 1 }, 4, [0, 1, -25], 'Each fly has its own copy of the real learning centre from the FlyWire map'],
@@ -345,7 +355,7 @@ async function autopilot() {
   // the winner!
   caption(`Generation ${runner.gen}: fly ${party.fly + 1} in lab ${party.lab + 1} wrote a perfect döner. Speed drops to 1×`);
   await glide({ x: 0, y: 4.8, z: 1.5 }, 3, [party.c.x, 1.5, party.c.z]);
-  await sleep(2500);
+  await wait(2500);
   caption('A path on the floor leads to the winner');
   await glide({ x: 0, y: EYE, z: -0.3 }, 2.5, [party.c.x, 1.0, party.c.z]);
   player.x = 0; player.z = -0.3;
@@ -358,28 +368,28 @@ async function autopilot() {
   const h = party.headPosition(new THREE.Vector3());
   await glide({ x: player.x, y: EYE, z: player.z }, 1, [h.x, h.y, h.z]);
   caption(`Fly ${party.fly + 1} is dancing`);
-  await sleep(4000);
+  await wait(4000);
   caption('A sugar cube: real dopamine for every choice in its winning program');
   await giveSugar();
-  await sleep(4500);
+  await wait(4500);
   caption('…and a contract for a new position in management');
   const res = await offerContract();
   if (res) {
     // travel towards the management office together with the flying fly, always looking at it
     const desk = new THREE.Vector3(res.seat.pos.x, 1.0, 8.75);
     const from = { x: player.x, y: player.y, z: player.z }, to = { x: 43.75, y: 2.4, z: 0.6 };
-    const dur = (party.flying ? party.flying.dur : 4) * 1000 + 600, t0 = performance.now();
-    for (let now = t0; now - t0 < dur; now = performance.now()) {
+    const dur = (party.flying ? party.flying.dur : 4) * 1000 + 600, t0 = clock.now();
+    for (let now = t0; now - t0 < dur; now = clock.now()) {
       const k = ease(Math.min(1, (now - t0) / dur));
       player.x = from.x + (to.x - from.x) * k; player.y = from.y + (to.y - from.y) * k; player.z = from.z + (to.z - from.z) * k;
       const f = party.flying ? party.flying.fly.root.position : desk;
       const a = aimAt(f.x, f.y, f.z);
       player.yaw = lerpAngle(player.yaw, a.yaw, 0.12); player.pitch += (a.pitch - player.pitch) * 0.12;
-      await sleep(16);
+      await wait(16);
     }
     await glide({ x: 43.75, y: 1.75, z: 5.2 }, 3, [desk.x, desk.y, desk.z]);
     caption(`Fly ${party.fly + 1}, Head of Döner. Its memory now trains flies in all 8 teams`);
-    await sleep(7000);
+    await wait(7000);
   }
   caption('');
   if (recorder.active) await toggleRecording();
@@ -389,17 +399,21 @@ async function autopilot() {
 
 // ---------------------------------------------------------------- every frame
 const HELP = 'WASD walk · Shift run · mouse look · click the buttons · R record · H hide this';
-const clock = new THREE.Clock();
+const realClock = new THREE.Clock();
 let frames = 0, fpsAt = 0, fps = 0;
 function frame() {
-  const dt = Math.min(0.05, clock.getDelta()), now = performance.now(), t = now / 1000;
+  // a frame-by-frame recording waits for the video encoder instead of piling frames up
+  if (recorder.busy) { requestAnimationFrame(frame); return; }
+  clock.tick();
+  const realDt = Math.min(0.05, realClock.getDelta());
+  const dt = clock.fixed ? clock.fixed / 1000 : realDt, now = clock.now(), t = now / 1000;
   for (let i = tweens.length - 1; i >= 0; i--) {
     const tw = tweens[i], k = Math.min(1, (now - tw.t0) / tw.dur);
     tw.fn(k);
     if (k >= 1) { tweens.splice(i, 1); tw.resolve(); }
   }
   player.update(dt);
-  if (now - nearAt > 250) { nearAt = now; assignNear(); }
+  if (!OFF.has('near') && now - nearAt > 250) { nearAt = now; assignNear(); }
   const pace = speed === 'pause' ? 0.1 : speed === '1' ? 0.4 : 1;
   workers.update(t, pace);
   for (const d of near) {
@@ -410,22 +424,26 @@ function frame() {
   party.update(dt, now, { x: player.x, z: player.z });
   party.idle(dt);
   supervisor.update(dt, t);
-  if (atlasDirty && now - atlasAt > 300 && last) { atlasDirty = false; atlasAt = now; office.drawAtlas(last.results, t); }
-  if (screenDirty && now - screenAt > 300) { screenDirty = false; screenAt = now; drawScreen(); }
+  // the big pictures (all 1,024 screens, the wall screen) are redrawn at most about once a second:
+  // handing a big canvas to the graphics card many times a second can run a browser out of memory
+  if (!OFF.has('atlas') && atlasDirty && now - atlasAt > 1000 && last) { atlasDirty = false; atlasAt = now; office.drawAtlas(last.results, t); }
+  if (!OFF.has('screen') && screenDirty && now - screenAt > 750) { screenDirty = false; screenAt = now; drawScreen(); }
   if (last && now - signsAt > 1000) { signsAt = now; for (let lab = 0; lab < LABS; lab++) office.drawSign(lab, runner.labStats[lab]); }
   aim();
   if (!player.autopilot && hud.state.help && player.moved > 40) hud.set({ help: '' });
   frames++;
-  if (now - fpsAt > 1000) { fps = frames; frames = 0; fpsAt = now; window.__cubicles.fps = fps; }
+  const real = performance.now();
+  if (real - fpsAt > 1000) { fps = frames; frames = 0; fpsAt = real; window.__cubicles.fps = fps; }
   renderer.clear();
-  renderer.render(scene, camera);
+  if (!OFF.has('render')) renderer.render(scene, camera);
   renderer.clearDepth();
-  hud.render(renderer, now);
+  if (!OFF.has('hud')) hud.render(renderer, now);
+  if (recorder.capture && recorder.active) recorder.capture();
   requestAnimationFrame(frame);
 }
 
 // ---------------------------------------------------------------- start
-window.__cubicles = { runner, party, player, get speed() { return speed; }, fps: 0, setSpeed, newFlies, offerContract, giveSugar };
+window.__cubicles = { runner, party, player, renderer, get speed() { return speed; }, fps: 0, setSpeed, newFlies, offerContract, giveSugar };
 office.drawAtlas([], 0);
 drawScreen();
 requestAnimationFrame(frame);
