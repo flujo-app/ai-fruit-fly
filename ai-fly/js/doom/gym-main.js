@@ -140,6 +140,7 @@ function drawMeters(r) {
 let lastBrainDraw = 0;
 function onFrame(m) {
   lastFrames[m.lab] = m;
+  m.over = false;
   drawLive(m);
   drawDesk(m.lab, m.desk, m.frame, m.pal, null, true);
   if (m.lab === watchLab && m.facets) {
@@ -155,6 +156,7 @@ function onFrame(m) {
 
 function onGame({ index, lab, desk, result, first, better }) {
   const l = runner.last[index];
+  if (lastFrames[lab]) lastFrames[lab].over = true;        // this lab's fly is no longer on the map
   drawDesk(lab, desk, l.thumb, l.pal, l);
   labBest();
   gameLog.push(result.score);
@@ -227,7 +229,8 @@ function replayTick(t) {
     // the small map of the level: where this fly went (up to this moment of the replay) and where it is now
     if (levelMap) {
       const c = $('map'), st = replayDoom.state;
-      levelMap.draw(c.getContext('2d'), 0, 0, c.width, c.height, { path: replayPath, upTo: replay.tic / 5 + 1, at: [st[DOOM.S.X] / 65536, st[DOOM.S.Y] / 65536] });
+      levelMap.draw(c.getContext('2d'), 0, 0, c.width, c.height, { path: replayPath, upTo: replay.tic / 5 + 1, at: [st[DOOM.S.X] / 65536, st[DOOM.S.Y] / 65536],
+        others: runner.running ? lastFrames.filter((m) => m && !m.over).map((m) => [m.x, m.y]) : null });
     }
   }
 }

@@ -343,7 +343,8 @@ function replayTick(now) {
   if (levelMap && runner.best) {
     const st = replayDoom.state, mw = 250, mh = 176, g = bestView.g;
     g.globalAlpha = 0.9;
-    levelMap.draw(g, RW - mw - 8, 8, mw, mh, { path: runner.best.path, upTo: replay.tic / 5 + 1, at: [st[DOOM.S.X] / 65536, st[DOOM.S.Y] / 65536] });
+    levelMap.draw(g, RW - mw - 8, 8, mw, mh, { path: runner.best.path, upTo: replay.tic / 5 + 1, at: [st[DOOM.S.X] / 65536, st[DOOM.S.Y] / 65536],
+      others: liveFrames.filter((m, lab) => m && liveDesk[lab] >= 0).map((m) => [m.x, m.y]) });       // violet: the flies playing right now
     g.globalAlpha = 1; g.strokeStyle = 'rgba(255,255,255,0.35)'; g.lineWidth = 1; g.strokeRect(RW - mw - 8.5, 7.5, mw + 1, mh + 1);
   }
   bestView.tex.needsUpdate = true;

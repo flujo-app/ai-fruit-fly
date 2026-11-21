@@ -108,8 +108,9 @@ export class LevelMap {
   }
 
   // Draws into the box (x, y, w, h) of a canvas. path: x, y pairs of where a fly went; upTo: how many of
-  // those points have been walked so far (the rest is drawn faintly); at: [x, y] where the fly is now.
-  draw(g, x, y, w, h, { path = null, upTo = Infinity, at = null, bg = '#0b0e14', label = true } = {}) {
+  // those points have been walked so far (the rest is drawn faintly); at: [x, y] where the fly is now;
+  // others: [[x, y], ...] where the flies are that play right now.
+  draw(g, x, y, w, h, { path = null, upTo = Infinity, at = null, others = null, bg = '#0b0e14', label = true } = {}) {
     const b = this.b, bw = b.maxX - b.minX, bh = b.maxY - b.minY;
     const turned = (bh > bw) !== (h > w);              // a tall level in a wide box is laid on its side
     const k = Math.min(w / (turned ? bh : bw), h / (turned ? bw : bh));
@@ -155,6 +156,7 @@ export class LevelMap {
       g.fillStyle = '#45d483'; g.fillText('exit', X(e.x, e.y) + 7 * u, Y(e.x, e.y));
       g.textBaseline = 'alphabetic';
     }
+    if (others) { g.fillStyle = '#a98bff'; for (const [px, py] of others) { g.beginPath(); g.arc(X(px, py), Y(px, py), 2.4 * u, 0, 6.2832); g.fill(); } }
     if (at) { g.fillStyle = '#ff5d62'; g.strokeStyle = '#fff'; g.lineWidth = u; g.beginPath(); g.arc(X(at[0], at[1]), Y(at[0], at[1]), 3.2 * u, 0, 6.2832); g.fill(); g.stroke(); }
     g.restore();
   }
