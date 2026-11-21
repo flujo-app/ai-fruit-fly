@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Doom Gym</title>
+  <link rel="stylesheet" href="css/gym.css">
+  <link rel="stylesheet" href="css/doom.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <div class="eyebrow">Real Doom · a complete fly brain per player</div>
+      <h1>Doom Gym</h1>
+      <p>Fruit flies play <b>Doom</b>. Each fly sits in front of a screen. The picture goes into its eyes, facet by facet, through the <b>whole brain</b> of the FlyWire map, and out of the cells a real fly uses to turn, walk and jump. Those cells are wired to the game controller. Nothing else reaches the fly.</p>
+      <p id="mode" class="mode"></p>
+    </div>
+    <div class="controls">
+      <button id="btn-run" class="primary" disabled>Loading…</button>
+      <button id="btn-reset" disabled>New desks</button>
+      <a class="link" href="fly-gym.html">← Fly Gym</a>
+      <a class="link" id="link-office" href="doom-cubicles.html">Walk the office →</a>
+    </div>
+  </header>
+
+  <section class="stats">
+    <div><span>Round</span><b id="st-round">1</b></div>
+    <div><span>Desks played</span><b id="st-played">–</b></div>
+    <div><span>Games</span><b id="st-games">0</b></div>
+    <div><span>Best score</span><b id="st-best">–</b></div>
+    <div><span>Average</span><b id="st-mean">–</b></div>
+    <div><span>Perfect games</span><b id="st-solved">0</b></div>
+    <div><span>One brain runs at</span><b id="st-speed">–</b></div>
+    <div><span>Nerve impulses</span><b id="st-impulses">0</b></div>
+  </section>
+
+  <main class="grid doom-grid">
+    <section class="card wall-card">
+      <div class="card-head"><h2 id="live-title">Playing right now</h2><span class="muted">one complete brain keeps one processor core busy, so this many flies can play at the same moment · click one to look inside its head</span></div>
+      <div id="banner" class="banner"></div>
+      <canvas id="live"></canvas>
+      <div class="card-head"><h2>Every desk's latest game</h2><span class="muted">the last picture of each game · bar = score out of 8 · green frame = killed all 8 monsters · click a desk to replay its game</span></div>
+      <canvas id="wall"></canvas>
+      <div id="tip" class="tip hidden"></div>
+    </section>
+
+    <section class="side">
+      <div class="card">
+        <div class="card-head"><h2 id="replay-title">Best game so far</h2><span class="muted" id="replay-note">no game yet</span></div>
+        <canvas id="replay" width="320" height="200"></canvas>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2 id="head-title">Inside one fly's head</h2><span class="muted" id="head-note"></span></div>
+        <div class="head-row">
+          <figure><canvas id="facets" width="176" height="132"></canvas><figcaption id="facets-note">what its eyes get</figcaption></figure>
+          <figure><canvas id="brain" width="220" height="132"></canvas><figcaption id="brain-note">its brain: a flash = a neuron fired</figcaption></figure>
+        </div>
+        <div class="meters" id="meters"></div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>Progress</h2><span class="muted" id="milestone"></span></div>
+        <canvas id="chart"></canvas>
+        <div class="legend"><i style="--c:#ffb547"></i>best so far <i style="--c:#a98bff"></i>average of the last 50 games <i style="--c:#5f6878"></i>each game</div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h2>The best desk's setup</h2><span class="muted" id="setup-note">the fly's brain is never changed; the gym tunes the desk</span></div>
+        <div id="setup"></div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="honest">
+    <b>How it works:</b> the game is the real Doom engine (its open-source release) with the free Freedoom data, in a round room with 8 monsters and a shotgun.
+    Every 1/35 second the picture is spread over the facets of the fly's two eyes (about 790 per eye; a fly cannot see red). The brain is the complete FlyWire map
+    (138,639 neurons, 15,091,983 connections), simulated impulse by impulse with the settings of Shiu et al. 2024. The game controller reads the fly's own output cells:
+    the steering cells DNa01 and DNa02 turn, the walking cells DNg100 and DNg97 walk, the moonwalker cells back up, and the giant fibre, the neuron that makes a fly jump
+    away when something rushes at it, pulls the trigger. Every fly has the same brain and <b>it is never changed</b>. What differs is the desk: how big the screen looks, how strongly the picture
+    drives the eye cells and how the ball under the fly is read. After each round the best desks' setups are copied, with small changes, over the worst.
+    <b>Hand-made:</b> the first two layers of the eye (brightness changes and local motion, computed the textbook way and handed to about 25,000 real cells), which output cell presses which key, the desk setups and the scoring.
+    <b>What the model cannot do:</b> the fly's learning centre learns smells, and Doom has none. With the eye signals above, none of its 5,177 Kenyon cells responds to the screen, so sugar and bitter cannot teach these flies Doom.
+  </footer>
+
+  <script type="module" src="js/doom/gym-main.js"></script>
+</body>
+</html>
