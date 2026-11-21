@@ -232,6 +232,8 @@ ourselves:
   without a screen or a clock, see `doom-engine/`) with the free Freedoom game data. The task is a
   round room: the fly has a shotgun and 200 health, and 8 monsters come for it within 30 seconds
   (3 zombies, a shotgun zombie, 3 imps and a demon, on Doom's normal difficulty "Hurt me plenty").
+  With `?level` the task is Freedoom's real first level instead
+  ([see below](#a-real-level-level-how-far-does-a-fly-brain-get)).
 - **The fly only gets the screen.** No positions, no health, no score. The picture goes into its eyes;
   the impulses of its own output cells are the only thing that comes out.
 - **The brain is complete and never changed.** Every player has all 138,639 neurons and all 15,091,983
@@ -282,9 +284,11 @@ trackball. Here the "ball" is read from the fly's own output cells:
 | walk forward | DNg100 and DNg97 | drive forward walking |
 | back up | MDN, the "moonwalker" cells | walking backwards |
 | pull the trigger | DNp01, the giant fibre | the jump that starts an escape |
+| "use" (doors and switches; only in the real level) | DNp07 and DNp10, the landing cells | stretching the legs out towards a surface that comes close |
 
 Which cell stands for which input is hand-made. So is the fact that the jump neuron is the trigger:
-whatever startles this fly gets shot at.
+whatever startles this fly gets shot at. And whatever it walks up to, it reaches out for: that is how
+it opens doors in the real level.
 
 ### What gets better: the desk, not the fly
 
@@ -387,6 +391,107 @@ is. And every lesson can only weaken a connection. So the learning centre stays 
 and `?learn` switches it on for anyone who wants to watch it (the desk's blue knob is then tuned
 between rounds like the others, and the page shows how many learning cells are active and each drop).
 
+### A real level (`?level`): how far does a fly brain get?
+
+Add `?level` to the address and the flies play **Freedoom's real first level** instead of the arena,
+exactly as a human player starts it: a pistol, 50 bullets, 100 health, Doom's normal difficulty, and
+the level's own 18 monsters where its makers put them. Nothing is added and nothing is given. The
+fly still gets only the screen. Under the replay of the best game the page shows a small map: the
+level, the way to the exit as a dotted line, the doors, where the replayed fly went, and where the
+flies are that play right now.
+
+**The way to the exit.** `js/doom/level.js` reads the level's map out of the game file and works out
+where a player can walk and how far it is from any spot to the exit switch, walking around the walls.
+From the start that is 4,609 map units, through three doors (after 20%, 47% and 89% of the way). A
+hand-written route follower that uses nothing but the fly's keys presses the exit switch after 18
+seconds (`node tools/test_doom_fly.mjs`), so the 60 seconds of a game are plenty for a player who
+knows the way.
+
+**The score out of 8.** Pressing the exit switch is 8. Short of that: up to 5 points for the share
+of the way to the exit that the fly covered (the farthest point it reached counts), up to 1.5 for new
+ground (the squares of floor it stood on; a tenth of the level's floor gives full marks) and up to
+1.5 for the share of the 18 monsters it killed. The score uses what the game knows, such as where
+the player stands. The fly never gets any of that.
+
+**Doors: the "use" key.** A Doom door opens when the player stands in front of it and presses
+"use". The exit switch works the same way. The fly presses that key with its own **landing cells,
+DNp07 and DNp10**. In a real fly these two kinds of cell stretch the legs out towards a surface that
+comes close: the landing reflex (Ache et al. 2019, *Nature Neuroscience*). In this brain model they
+do the fitting thing without any help. `node tools/doom_experiments.mjs` carries the brain through
+the level without letting it steer:
+
+| The fly is... | Impulses of the landing cells in 1.5 s |
+|---|---|
+| walked along the first corridor, nothing close ahead | 0 |
+| standing in front of a door, not moving | 0 |
+| walked up to a plain wall | 52 |
+| walked up to the first door | 43 |
+
+So a fly that walks up to a door reaches out for it, and that opens it. Hand-made: that these cells
+stand for the "use" key, how many of their impulses within a tenth of a second press it (a desk
+knob), and that a key held down is let go for a moment four times a second, because Doom wants a new
+press for every door. Not like a real fly: there these cells answer mainly while the fly is flying,
+and this brain model knows no difference between flying and walking. The reduced brain of `?fast`
+does not contain them, so its flies cannot open doors.
+
+**What we measured** (`node tools/train_doom.mjs level flies=64 rounds=2 threads=5`: complete
+brains, 64 desks in 8 labs, games of 60 seconds; round 1 is 8 standard desks and 56 random ones,
+after that the desks are tuned as in the arena). Two rounds have been played so far; a third has
+not been played yet:
+
+| | Games | Average score | Way to the exit: average fly | middle fly | best fly | Flies that get somewhere | Through the first door | At the exit | Died |
+|---|---|---|---|---|---|---|---|---|---|
+| Standard desk (round 1) | 8 | 0.02 of 8 | 0% | 0% | 0% | 0 | 0 | 0 | 0 |
+| Random desks (round 1) | 56 | 0.78 ± 0.08 | 7% | 4% | 30% | 39 | 1 | 0 | 15 |
+| Round 2, all 64 desks | 64 | 1.10 ± 0.07 | 11% | 10% | 28% | 57 | 2 | 0 | 29 |
+
+("Gets somewhere" means more than 2% of the way, about 90 map units.)
+
+**No fly has reached the exit.** The best one got 30% of the way: through the first door and across the
+big hall behind it. Here is what stands between a fly brain and the end of the level:
+
+- **With the standard desk the fly never moves.** Nothing moves in the level's first room. The eye
+  signals are all about change (brightening, darkening, motion), and this brain model has no
+  activity of its own, so a still picture leaves the brain silent and the fly stands there for the
+  whole 60 seconds. A real fly would wander off by itself. In the arena the monsters come to the
+  fly and wake it up; here nobody comes.
+- **What gets a fly going is a ball that is trimmed.** A trimmed ball makes the view drift all the
+  time. That movement reaches the eyes, the walking cells answer, the fly walks, and its own walking
+  then keeps the picture moving. Every random desk has some trim. 39 of the 56 got their fly
+  somewhere; the other 17 mostly spin on the spot, because their ball is trimmed too hard, or creep,
+  because it hardly passes the walking on.
+- **The best flies walk straight.** The best desk of round 1 turns the view very little when the
+  steering cells disagree (0.48 where the standard desk has 3). Its fly walked down the first
+  corridor in an almost straight line, reached out when the door filled its view, went through,
+  crossed the big hall and died at its far wall after 35 seconds. Across the random desks, the more
+  a desk lets the fly turn, the less way it covers (rank correlation -0.55). The level begins with a
+  long straight corridor, and a fly that turns towards or away from everything it sees walks in
+  loops.
+- **The first door stops nearly all of them.** It comes after 20% of the way. In round 2, 17 flies
+  got to within about 200 map units of it and 2 went through. Of the 15 that did not, 9 never
+  pressed "use" at all (their desk asks for more landing impulses than their fly produces), and 6
+  pressed it without the door in front of them. Doom only opens a door for a player who stands
+  close and faces it.
+- **Walking flies get shot.** 15 flies died in round 1 and 29 in round 2. The more of them walk
+  down the corridor, the more meet the level's zombies, and 9 of the 15 that were stopped at the
+  door died there. They hardly fight back: 7 monsters killed in round 1 and 10 in round 2, by all
+  64 flies together.
+
+Desk tuning helps, as in the arena, and far less: after one round of it the middle fly gets
+half-way down the first corridor instead of a few steps. The brain is the same in every game.
+
+A round of 64 desks took about 70 minutes with 5 brains at once on a PC that was busy with other
+work. A fly that walks through the level keeps its brain much busier than the arena does, probably
+because every wall there has a pattern that moves across the eyes: one brain ran at about a sixth
+of real time.
+
+**With `?learn`** the level hands out treats too (`js/doom/learning.js`): a drop of sugar for every
+4 new squares of floor (64 by 64 map units each) the fly stands on in a game, three for the exit
+switch, and one for a kill as before; a drop of bitter for a hit taken or for a second of walking
+against a wall. In the check game a fly got 7 drops of sugar and 10 of bitter in 25 seconds
+(`node tools/test_doom_fly.mjs`). Whether that teaches a fly anything about the level has not been
+measured yet. In the arena it did not help.
+
 ### Speed, and the faster brain engine
 
 One complete brain keeps one processor core busy, so as many flies play at the same moment as the
@@ -408,7 +513,8 @@ current round will still take.
 
 Options: `?flies=64` (fewer desks, so a round is shorter), `?labs=4` (fewer brains at once),
 `?seconds=20` (shorter games), `?autostart`, `?resume` (continue the run that is saved to the local
-server every 16 games), `?learn` (the learning centre switched on, see above), and **`?fast`**: a reduced brain of 30,658 neurons (the cells between the
+server every 16 games), `?learn` (the learning centre switched on, see above), `?level` (the real
+level instead of the arena, see above), and **`?fast`**: a reduced brain of 30,658 neurons (the cells between the
 eyes and the output cells, and all connections between them). It is quicker and it is not the real
 thing; the page says so in amber. The default is always the complete brain.
 
@@ -417,12 +523,13 @@ keeps its own copy (about 500 MB in total).
 
 `node tools/play_doom.mjs`, `node tools/train_doom.mjs`, `node tools/doom_learning.mjs` and
 `node tools/test_doom_fly.mjs` run games, whole rounds, the learning comparison and the checks
-without a page.
+without a page. The first three play the arena, or with the word `level` the real level.
 
 **Hand-made:** the first two layers of the eye, where the eye looks (how many degrees the eye map
 covers), which output cell is which game input, the desk setups, the arena, its monsters and the
-scoring; and with `?learn` the blue-light signal of the aMe12 cells, what earns sugar or bitter, and
-that sugar and bitter mean dopamine. **Real:** the game, every neuron and connection behind the
+scoring; in the real level the score, that the landing cells press the "use" key, and that a held
+key is let go for a moment now and then; and with `?learn` the blue-light signal of the aMe12 cells,
+what earns sugar or bitter, and that sugar and bitter mean dopamine. **Real:** the game, every neuron and connection behind the
 24,991 eye cells, every impulse that turns the picture into a movement, and the rule by which the
 learning centre's connections change.
 
@@ -441,8 +548,12 @@ The same games in the office of the Cubicles page: 1,024 desks in 8 teams, one t
   learns anything depends on `?learn`) or **2** for a management contract: it flies to the management office and its
   desk setup is copied to the 8 weakest desks of every team.
 - **3** shows the best game so far filling the view.
+- **`?level`:** the flies play the real level instead of the arena. The replay of the best game then
+  has a small map in its corner: the level, the way to the exit, where the best fly went, where it
+  is in the replay, and (violet dots) where the flies are that play right now. The party is for the
+  first fly that presses the exit switch.
 - **Options:** `?autostart`, `?record`, `?autopilot` (the camera walks by itself, for a demo video),
-  `?fast`, `?learn`, `?seconds=`, `?resume`, `?cam=x,z,yaw,pitch,height`, `?size=1920x1080`, `?testparty=12`
+  `?fast`, `?learn`, `?level`, `?seconds=`, `?resume`, `?cam=x,z,yaw,pitch,height`, `?size=1920x1080`, `?testparty=12`
   (pretend the best fly after 12 games won, to try the party).
 
 ## What's real and what's hand-made
@@ -496,7 +607,8 @@ result: about 400 neurons become active and the feeding neuron MN9 fires.
 - `data/gym.bin`, `data/gym.json`: precomputed smell fingerprints (`tools/make_fingerprints.mjs`)
 - `tools/train_gym.mjs`: headless Fly Gym training, for experiments
 - `doom-gym.html`, `doom-cubicles.html`, `css/doom.css`, `js/doom/`: the Doom pages: the Doom engine's
-  wrapper (`engine.js`), the eyes (`eye.js`), one fly playing one game (`game.js`), the desk setups
+  wrapper (`engine.js`), the eyes (`eye.js`), one fly playing one game (`game.js`), the real level's
+  map, the way to its exit and the distance to it from everywhere (`level.js`), the desk setups
   and what happens to them after a round (`setup.js`, `evolve.js`), the learning centre with sugar
   and bitter (`learning.js`, off unless `?learn`), one lab per worker
   (`doom-worker.js`), the rounds (`runner.js`), loading (`load.js`), drawing helpers (`views.js`)

@@ -167,6 +167,8 @@ Nothing else reaches the fly: no positions, no health, no score.
 
 The task is a round room, a shotgun, and 8 monsters in 30 seconds. In the first measured run the average fly killed about 2 of the 8 monsters in round 1 and about 4 in round 3, and one fly got all 8. The brain is the same in every game. What the gym improves between rounds is the desk: how big the screen looks, how strongly the picture drives the eye cells, and how the fly's movements are read.
 
+**A real level.** Add `?level` and the flies play Freedoom's real first level instead, exactly as a human player starts it: a pistol, 50 bullets, and 4,600 map units and three doors between the start and the exit switch. The fly opens doors itself. Its landing cells, which in a real fly stretch the legs out towards a surface that comes close, press the "use" key. How far does a fly brain get? Not far. With the standard desk the fly doesn't move at all: nothing moves in the level's first room, and this brain model has no activity of its own. After one round of desk tuning about half of the flies get at least half-way down the first corridor and two open the first door. The best fly so far got 30% of the way to the exit. None has finished the level. The page shows a small map of where the best fly went.
+
 The same games in the office: <http://127.0.0.1:8765/doom-cubicles.html>. Every monitor shows its desk's game, and you can walk up and watch.
 
 <table>
@@ -184,6 +186,7 @@ The same games in the office: <http://127.0.0.1:8765/doom-cubicles.html>. Every 
 |---|---|
 | nothing | The complete brain. One brain keeps one processor core busy, so on an 8-core computer 8 flies play at once and the 1,024 desks take turns. |
 | `?fast` | A reduced brain. Quicker, and not the real thing. |
+| `?level` | Freedoom's real first level instead of the arena. The fly opens doors with its own landing cells. So far no fly has reached the exit. |
 | `?learn` | The fly's learning centre switched on: sugar for a kill, bitter for a hit. It works the way it does in a real fly, and in our tests it didn't make the flies any better at Doom. That's why it's off by default. |
 
 [The eyes, the controller and all the measurements →](ai-fly/README.md#doom-gym-doom-gymhtml-the-complete-brain-plays-doom)
