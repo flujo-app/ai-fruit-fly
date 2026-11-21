@@ -6,6 +6,8 @@
 #live { display: block; width: calc(100% - 28px); margin: 0 14px 10px; cursor: pointer; image-rendering: pixelated; }
 #wall { image-rendering: pixelated; }
 #replay { display: block; width: 100%; aspect-ratio: 320 / 240; image-rendering: pixelated; background: #000; cursor: pointer; }
+#map { display: block; width: 100%; background: #0b0e14; }
+#map[hidden], #map-legend[hidden] { display: none; }
 .head-row { display: flex; gap: 8px; padding: 0 12px 6px; }
 .head-row figure { margin: 0; flex: 1 1 0; min-width: 0; }
 .head-row canvas { display: block; width: 100%; border-radius: 8px; background: #05070b; }

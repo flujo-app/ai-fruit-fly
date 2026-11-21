@@ -1,4 +1,5 @@
 // The Doom Gym page.
+//   ?level         the real level (Freedoom's first level, as a human player starts it) instead of the arena
 //   ?fast          a reduced brain (only the cells between the eyes and the output cells): quicker, not the real thing
 //   ?flies=1024    how many desks (default 1,024)      ?labs=8   how many brains run at once (default: one per core, up to 8)
 //   ?seconds=30    how long a game lasts at most       ?autostart   start at once
@@ -9,8 +10,8 @@ import { DoomRunner } from './runner.js';
 import { loadDoom, DOOM } from './engine.js';
 import { parseRig } from './eye.js';
 import { readData } from './load.js';
-import { Replay, FRAME_W, FRAME_H, ARENA } from './game.js';
-import { Screens, BrainDots, drawFacets, scoreColour } from './views.js';
+import { Replay, FRAME_W, FRAME_H, taskOf } from './game.js';
+import { Screens, BrainDots, LevelMap, drawFacets, scoreColour } from './views.js';
 import { describeSetup, KEY } from './setup.js';
 
 const $ = (id) => document.getElementById(id);
@@ -18,18 +19,22 @@ const P = new URLSearchParams(location.search);
 const FAST = P.has('fast');
 const LABS = Math.max(1, Math.min(16, Number(P.get('labs')) || Math.min(8, navigator.hardwareConcurrency || 4)));
 const PER_LAB = Math.max(1, Math.round((Number(P.get('flies')) || 1024) / LABS));
-const SECONDS = Number(P.get('seconds')) || ARENA.seconds;
+const TASK = P.has('level') ? 'level' : 'arena', LEVEL = TASK === 'level';
+const SECONDS = Number(P.get('seconds')) || taskOf(TASK).seconds;
 const LEARNING = P.has('learn') && !FAST;
-const STATE_URL = `/state/doom-${FAST ? 'fast' : LEARNING ? 'learn' : 'full'}-${LABS}x${PER_LAB}`;
+const STATE_URL = `/state/doom-${LEVEL ? 'level-' : ''}${FAST ? 'fast' : LEARNING ? 'learn' : 'full'}-${LABS}x${PER_LAB}`;
 const nf = (x) => Math.round(x).toLocaleString('en-US');
+const pct = (x) => `${Math.round(100 * (x || 0))}%`;
+// a game in a few words: the arena counts kills, the level how far the fly got
+const told = (l) => LEVEL ? `${pct(l.way)} of the way to the exit${l.doors ? `, through ${l.doors} door${l.doors > 1 ? 's' : ''}` : ''} · ${l.kills} killed` : `${l.kills} killed`;
 
-let screens = null, rig = null, dots = null, replayDoom = null, replay = null;
+let screens = null, rig = null, dots = null, replayDoom = null, replay = null, levelMap = null, replayPath = null;
 let watchLab = 0, selected = null;          // selected: desk index whose game is replayed instead of the best one
 let lastFrames = new Array(LABS).fill(null);
 const gameLog = [];                           // every game's score, for the chart
 
 const runner = new DoomRunner({
-  labs: LABS, perLab: PER_LAB, fast: FAST, learn: LEARNING, seconds: SECONDS,
+  labs: LABS, perLab: PER_LAB, fast: FAST, learn: LEARNING, task: TASK, seconds: SECONDS,
   onStatus: (t) => { if (t) $('btn-run').textContent = t[0].toUpperCase() + t.slice(1) + '…'; },
   onFrame, onGame, onRound,
 });
@@ -74,7 +79,7 @@ function drawLive(m) {
   g.font = '600 10.5px system-ui'; g.fillStyle = '#cfd3dc';
   g.fillText(`LAB ${m.lab + 1} · desk ${m.desk + 1}`, x + 6, y + 12);
   g.textAlign = 'right'; g.fillStyle = m.health > 0 ? '#eceef3' : '#ff5d62';
-  g.fillText(`${m.kills} killed · health ${Math.max(0, m.health)} · ${(m.tic / 35).toFixed(0)} s`, x + live.tw - 6, y + 12); g.textAlign = 'left';
+  g.fillText(`${LEVEL ? pct(m.way) + ' of the way' : m.kills + ' killed'} · health ${Math.max(0, m.health)} · ${(m.tic / 35).toFixed(0)} s`, x + live.tw - 6, y + 12); g.textAlign = 'left';
   if (m.rates && m.rates.fire) { g.fillStyle = '#ffb547'; g.fillRect(x + live.tw - 10, y + live.th - 10, 6, 6); }
   if (m.lab === watchLab) { g.strokeStyle = '#5fd4ff'; g.lineWidth = 2; g.strokeRect(x + 1, y + 1, live.tw - 2, live.th - 2); }
 }
@@ -110,9 +115,11 @@ function labBest() {
 }
 
 const METERS = [['left', 'steer left', 60, '#5fd4ff'], ['right', 'steer right', 60, '#5fd4ff'], ['walk', 'walk', 150, '#45d483'], ['back', 'back up', 60, '#a98bff'], ['jump', 'jump neuron', 150, '#ffb547']];
+if (LEVEL) METERS.push(['reach', 'landing cells', 60, '#ff8fd0']);        // in the level they press the "use" key
 function buildMeters() {
   $('meters').innerHTML = METERS.map(([k, name, , c]) => `<div class="meter" id="m-${k}"><span>${name}</span><i><b style="--c:${c}"></b></i><span>0</span></div>`).join('')
     + `<div class="meter" id="m-fire"><span>trigger</span><i><b style="--c:#ff5d62"></b></i><span>–</span></div>`
+    + (LEVEL ? `<div class="meter" id="m-use"><span>use key (doors)</span><i><b style="--c:#ff8fd0"></b></i><span>–</span></div>` : '')
     + (LEARNING ? `<div class="meter" id="m-kc"><span>learning centre</span><i><b style="--c:#a98bff"></b></i><span>0</span></div><div class="meter" id="m-drop"><span>taste</span><i><b style="--c:#45d483"></b></i><span>–</span></div>` : '');
 }
 function drawMeters(r) {
@@ -120,6 +127,7 @@ function drawMeters(r) {
     const el = $(`m-${k}`); el.querySelector('b').style.width = `${Math.min(100, 100 * r[k] / max)}%`; el.lastElementChild.textContent = `${Math.round(r[k])}/s`;
   }
   const f = $('m-fire'); f.classList.toggle('on', !!r.fire); f.querySelector('b').style.width = r.fire ? '100%' : '0'; f.lastElementChild.textContent = r.fire ? 'pulled' : '–';
+  if (LEVEL) { const u = $('m-use'); u.classList.toggle('on', !!r.use); u.querySelector('b').style.width = r.use ? '100%' : '0'; u.lastElementChild.textContent = r.use ? 'pressed' : '–'; }
   if (LEARNING) {
     // how many of the Kenyon cells that get input from the eyes fired in the last 1/35 s, and a drop on the tongue
     const k = $('m-kc'); k.querySelector('b').style.width = `${Math.min(100, 100 * r.kc / 30)}%`; k.lastElementChild.textContent = `${r.kc} cells`;
@@ -153,9 +161,9 @@ function onGame({ index, lab, desk, result, first, better }) {
   updateStats();
   drawChart();
   if (first) {
-    $('banner').innerHTML = `<b>Round ${runner.round + 1}, game ${nf(runner.games)}:</b> the fly at desk ${desk + 1} in lab ${lab + 1} killed all 8 monsters and is still alive!`;
+    $('banner').innerHTML = `<b>Round ${runner.round + 1}, game ${nf(runner.games)}:</b> the fly at desk ${desk + 1} in lab ${lab + 1} ${LEVEL ? 'pressed the exit switch: it finished the level!' : 'killed all 8 monsters and is still alive!'}`;
     $('banner').classList.add('show');
-    $('milestone').textContent = `first perfect game: game ${nf(runner.games)}`;
+    $('milestone').textContent = `${LEVEL ? 'first fly at the exit' : 'first perfect game'}: game ${nf(runner.games)}`;
   }
   if (better && selected === null) showReplay();
   if (better) renderSetup();
@@ -194,17 +202,17 @@ function showReplay() {
   let rec = null;
   if (selected !== null && runner.records[selected]) {
     const lab = Math.floor(selected / PER_LAB), d = selected % PER_LAB, l = runner.last[selected];
-    rec = runner.records[selected];
+    rec = runner.records[selected]; replayPath = l.path;
     $('replay-title').textContent = `Lab ${lab + 1}, desk ${d + 1}: latest game`;
-    $('replay-note').innerHTML = `${l.score.toFixed(2)} of 8 · ${l.kills} killed · <a href="#" id="to-best">back to the best game</a>`;
+    $('replay-note').innerHTML = `${l.score.toFixed(2)} of 8 · ${told(l)} · <a href="#" id="to-best">back to the best game</a>`;
     $('to-best').onclick = (e) => { e.preventDefault(); selected = null; showReplay(); renderSetup(); };
   } else if (runner.best) {
-    const b = runner.best; rec = b.record;
+    const b = runner.best; rec = b.record; replayPath = b.path;
     $('replay-title').textContent = 'Best game so far';
-    $('replay-note').textContent = `lab ${b.lab + 1}, desk ${b.desk + 1}, round ${b.round} · ${b.score.toFixed(2)} of 8 · ${b.kills} killed${b.perfect ? ' · perfect' : ''}`;
+    $('replay-note').textContent = `lab ${b.lab + 1}, desk ${b.desk + 1}, round ${b.round} · ${b.score.toFixed(2)} of 8 · ${told(b)}${b.perfect ? (LEVEL ? ' · found the exit' : ' · perfect') : ''}`;
   }
   if (!rec) return;
-  replay = new Replay(replayDoom, { ...ARENA, seconds: SECONDS }).start(rec);
+  replay = new Replay(replayDoom, taskOf(TASK, { seconds: SECONDS })).start(rec);
   replay.hold = 0;
 }
 let replayAt = 0;
@@ -216,6 +224,11 @@ function replayTick(t) {
     const pal = replayDoom.state[DOOM.S.PALETTE];
     const g = $('replay').getContext('2d'); g.imageSmoothingEnabled = false;
     g.drawImage(screens.canvasOf(replayDoom.renderFull(), pal, 320, 200, 'replay'), 0, 0);
+    // the small map of the level: where this fly went (up to this moment of the replay) and where it is now
+    if (levelMap) {
+      const c = $('map'), st = replayDoom.state;
+      levelMap.draw(c.getContext('2d'), 0, 0, c.width, c.height, { path: replayPath, upTo: replay.tic / 5 + 1, at: [st[DOOM.S.X] / 65536, st[DOOM.S.Y] / 65536] });
+    }
   }
 }
 
@@ -287,7 +300,7 @@ $('wall').addEventListener('mousemove', (e) => {
   const i = deskAt(e), tip = $('tip');
   if (i < 0) { tip.classList.add('hidden'); return; }
   const l = runner.last[i], card = $('wall').parentElement.getBoundingClientRect();
-  tip.textContent = `Lab ${Math.floor(i / PER_LAB) + 1} · desk ${i % PER_LAB + 1} · ` + (l ? `${l.score.toFixed(2)} of 8 · ${l.kills} killed · ${l.dead ? 'died' : 'alive'} after ${l.seconds.toFixed(0)} s${LEARNING && l.kcEver !== undefined ? ` · ${l.kcEver} learning cells used, ${l.sugar} sugar, ${l.bitter} bitter` : ''}${runner.records[i] ? ' · click to replay' : ''}` : 'has not played yet');
+  tip.textContent = `Lab ${Math.floor(i / PER_LAB) + 1} · desk ${i % PER_LAB + 1} · ` + (l ? `${l.score.toFixed(2)} of 8 · ${told(l)} · ${l.perfect && LEVEL ? 'at the exit' : l.dead ? 'died' : 'alive'} after ${l.seconds.toFixed(0)} s${LEARNING && l.kcEver !== undefined ? ` · ${l.kcEver} learning cells used, ${l.sugar} sugar, ${l.bitter} bitter` : ''}${runner.records[i] ? ' · click to replay' : ''}` : 'has not played yet');
   tip.style.left = `${e.clientX - card.left + 14}px`; tip.style.top = `${e.clientY - card.top + 14}px`;
   tip.classList.remove('hidden');
 });
@@ -311,10 +324,21 @@ function frame(t) {
   screens = new Screens(runner.palettes);
   rig = parseRig(runner.rigBin, runner.rigMeta);
   $('mode').classList.toggle('fast', FAST);
-  $('mode').innerHTML = FAST
-    ? `FAST MODE: a reduced brain of ${nf(info.neurons)} of the 138,639 neurons (the cells between the eyes and the output cells). <a href="${location.pathname}">Switch to the complete brain</a>`
+  const other = new URLSearchParams(location.search); if (LEVEL) other.delete('level'); else other.set('level', '');
+  const otherUrl = `${location.pathname}${[...other.keys()].length ? '?' + [...other].map(([k, v]) => v ? `${k}=${v}` : k).join('&') : ''}`;
+  if (LEVEL) {
+    // the level's own texts
+    levelMap = new LevelMap(runner.wad);
+    $('map').hidden = false; $('map-legend').hidden = false;
+    $('st-solved-name').textContent = 'Found the exit';
+    $('wall-note').textContent = 'the last picture of each game · bar = score out of 8 · green frame = found the exit · click a desk to replay its game';
+    $('how-task').innerHTML = `in <b>Freedoom's real first level</b>, exactly as a human player starts it: a pistol, 50 bullets, 100 health and the level's own ${levelMap.nav.monsters} monsters. The way to the exit switch is about ${nf(Math.round(levelMap.nav.total / 100) * 100)} map units long and leads through ${levelMap.nav.doors.length} doors. The score: 8 for pressing the exit switch; short of that up to 5 points for the share of the way the fly covered, 1.5 for new ground and 1.5 for monsters killed. <b>Doors:</b> the "use" key is pressed by the fly's own landing cells (DNp07 and DNp10), which in a real fly stretch the legs out towards a surface that comes close; that these cells stand for this key is hand-made`;
+  }
+  $('mode').innerHTML = (FAST
+    ? `FAST MODE: a reduced brain of ${nf(info.neurons)} of the 138,639 neurons (the cells between the eyes and the output cells).${LEVEL ? ' It has no landing cells, so these flies cannot open doors.' : ''} <a href="${location.pathname}${LEVEL ? '?level' : ''}">Switch to the complete brain</a>`
     : `Complete brain: ${nf(info.neurons)} neurons and ${nf(info.connections)} connections for every fly, nothing left out. ${nf(info.driven)} eye cells receive the picture. ${LABS} flies play at once, ${nf(runner.desks)} desks take turns.`
-      + (LEARNING ? ' <b>Learning centre on:</b> blue light on the screen reaches it, a kill earns a drop of sugar and a hit a drop of bitter, and every fly keeps what it learns.' : ` <a href="${location.pathname}?learn${location.search ? '&' + location.search.slice(1) : ''}">Switch the learning centre on</a>`);
+      + (LEARNING ? ` <b>Learning centre on:</b> blue light on the screen reaches it, ${LEVEL ? 'new ground, a kill and the exit earn sugar, a hit or being stuck earns bitter' : 'a kill earns a drop of sugar and a hit a drop of bitter'}, and every fly keeps what it learns.` : ` <a href="${location.pathname}?learn${location.search ? '&' + location.search.slice(1) : ''}">Switch the learning centre on</a>`))
+    + ` <b>Task: ${LEVEL ? "Freedoom's real first level" : 'the arena'}.</b> <a href="${otherUrl}">${LEVEL ? 'Switch to the arena' : 'Switch to the real level'}</a>`;
   $('live-title').textContent = `Playing right now: ${LABS} flies`;
   if (P.has('resume') && await runner.load(STATE_URL)) {
     for (const l of runner.last) if (l) gameLog.push(l.score);
