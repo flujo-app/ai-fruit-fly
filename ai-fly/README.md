@@ -1,4 +1,17 @@
-# AI Fruit Fly
+# AI Fruit Fly: all the details
+
+This is the long version: how every page works, what we measured, which parts are real and which
+are hand-made, the files, and the credits. For the short guide with pictures and videos, see the
+[main README](../README.md).
+
+**On this page:** [Run it](#run-it) · [Fly world](#fly-world-indexhtml) ·
+[Döner Dev Fly](#döner-dev-fly-doenerhtml) ·
+[Fly Gym](#fly-gym-fly-gymhtml-hard-mode-mass-training) ·
+[Cubicles](#cubicles-cubicleshtml-the-fly-gym-as-an-office) ·
+[Doom Gym](#doom-gym-doom-gymhtml-the-complete-brain-plays-doom) ·
+[Doom Cubicles](#doom-cubicles-doom-cubicleshtml-the-doom-gym-as-an-office) ·
+[What's real and what's hand-made](#whats-real-and-whats-hand-made) ·
+[Files](#files) · [Credits and licences](#credits-and-licences)
 
 A 3D tabletop world (three.js) with a virtual fruit fly. A full simulation of a real fly brain
 runs live in the browser and steers it. That brain is all **138,639 neurons** and
@@ -13,7 +26,9 @@ python serve.py
 Then open <http://127.0.0.1:8765>. You need an internet connection the first time, because
 three.js loads from a CDN. The brain file is 61 MB and loads in a few seconds.
 
-## What you can do
+## Fly world (index.html)
+
+Open <http://127.0.0.1:8765>. This is what you can do, and what each action sets off in the brain:
 
 | Key | Action | What happens in the brain |
 |---|---|---|
