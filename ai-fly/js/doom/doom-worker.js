@@ -17,7 +17,7 @@ const breathe = () => new Promise((r) => { wake = r; chan.port2.postMessage(0); 
 async function play(m) {
   busy = true; abort = false;
   const { brain, eye } = fly;
-  game.start(m.setup, m.seed);
+  game.start(m.setup, m.seed, m.fly);
   brain.spikesTotal = 0;
   const t0 = performance.now();
   let more = true;

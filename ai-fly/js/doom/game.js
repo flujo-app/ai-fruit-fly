@@ -54,13 +54,14 @@ export class Game {
   // impulses of a group of output cells during the last tic
   _n(name) { const [o, n] = this.read.span[name]; let s = 0; for (let k = 0; k < n; k++) s += this.count[o + k]; return s; }
 
-  // start a game: `setup` is the desk's setup (see setup.js), `seed` decides where the monsters appear
-  start(setup, seed) {
+  // start a game: `setup` is the desk's setup (see setup.js), `seed` decides where the monsters appear,
+  // and `fly` (the desk's number) gives each fly its own run of chance in when exactly its eye cells fire
+  start(setup, seed, fly = 0) {
     const { doom, brain, eye, task } = this;
     this.setup = setup; this.seed = seed;
     doom.newGame({ skill: task.skill, map: task.map, seed });
     doom.give(task.weapon, task.ammo, task.health);
-    brain.reset(); brain.seed((seed * 2654435761) >>> 0);
+    brain.reset(); brain.seed((Math.imul(seed + 1, 2654435761) ^ Math.imul(fly + 1, 40503)) >>> 0);
     eye.o.gMotion = setup[KEY.gMotion]; eye.o.gContrast = setup[KEY.gContrast]; eye.o.gObject = setup[KEY.gObject]; eye.o.gDark = setup[KEY.gDark];
     if (eye.widthDeg !== setup[KEY.screen] || eye.w !== FRAME_W) eye.setScreen(setup[KEY.screen], FRAME_W, FRAME_H); else eye.reset();
     this.palette = -1;
