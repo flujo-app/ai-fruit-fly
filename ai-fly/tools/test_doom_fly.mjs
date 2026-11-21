@@ -1,10 +1,11 @@
-// Checks the chain "Doom picture -> fly eyes -> complete brain -> game controller".
-//   node tools/test_doom_fly.mjs          (about a minute)
+// Checks the chain "Doom picture -> fly eyes -> complete brain -> game controller", and the learning centre.
+//   node tools/test_doom_fly.mjs          (a few minutes)
 import { loadDoomFromUrls, DOOM } from '../js/doom/engine.js';
 import { loadRig, loadWiring, makeFly } from '../js/doom/load.js';
 import { Game, Replay, readoutCells, FRAME_W, FRAME_H } from '../js/doom/game.js';
-import { defaultSetup, randomSetup, mutateSetup, rng, SETUP, KEY } from '../js/doom/setup.js';
+import { defaultSetup, randomSetup, mutateSetup, rng, SETUP, KEY, BLUE_STANDARD } from '../js/doom/setup.js';
 import { evolve } from '../js/doom/evolve.js';
+import { LEARN } from '../js/doom/learning.js';
 
 let failed = 0;
 const check = (ok, text) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${text}`); if (!ok) failed++; };
@@ -60,6 +61,44 @@ const rp = new Replay(doom).start(a); while (rp.step());
 check([...doom.state.slice(1, 17)].join(',') === a.end, 'replaying the recorded input (no brain) ends in the same state');
 const c = play(defaultSetup(), 4);
 check(c.end !== a.end, 'another seed gives another game');
+check(a.kcEver === 0 && a.memory === null, 'with the blue-light signal off, no Kenyon cell of the learning centre fires, and nothing is learnt');
+
+// ---- the learning centre
+{
+  const lc = game.lc;
+  check(lc.ok && eye.blueCells.length === 7 && lc.kc.length > 300 && lc.size > 3000, `learning centre: ${eye.blueCells.length} blue-light cells, ${lc.kc.length} Kenyon cells with input from the eyes, a memory of ${lc.size} connections`);
+  // the rule by itself: pretend Kenyon cells 0..9 were just active, then give a drop of sugar, then one of bitter
+  lc.load(null);
+  for (let k = 0; k < 10; k++) lc.trace[k] = 5;
+  const zoneOf = (m) => lc.memZone[m], inFirstTen = (m) => m < lc.memStart[10];
+  lc.drop(1, 1);
+  let okSugar = true, touched = 0;
+  for (let m = 0; m < lc.size; m++) { const should = inFirstTen(m) && zoneOf(m) === 1; if (should) touched++; if (should ? Math.abs(lc.mem[m] - (1 - LEARN.sugar)) > 1e-6 : lc.mem[m] !== 1) okSugar = false; }
+  check(okSugar && touched > 0, `a drop of sugar weakens only the active Kenyon cells' connections onto the "sugar zone" output cells (${touched} connections, each by ${LEARN.sugar * 100}%)`);
+  lc.drop(2, 1);
+  let okBitter = true, touchedB = 0;
+  for (let m = 0; m < lc.size; m++) { if (inFirstTen(m) && zoneOf(m) === 2) { touchedB++; if (Math.abs(lc.mem[m] - (1 - LEARN.bitter)) > 1e-6) okBitter = false; } else if (!inFirstTen(m) && lc.mem[m] !== 1) okBitter = false; }
+  check(okBitter && touchedB > 0, `a drop of bitter does the same for the "bitter zone" output cells (${touchedB} connections)`);
+  const m0 = lc.memIdx[lc.memStart[0]];
+  check(Math.abs(brain.pw[m0] - brain.pBase[m0] * lc.mem[lc.memStart[0]]) < 1e-6, 'the brain really runs with the weakened connections');
+  const kept = lc.memory();
+  check(kept.every((v, m) => v >= lc.mem[m] - 1e-6 && v <= 1 + 1e-6) && kept.some((v, m) => v > lc.mem[m] + 1e-6), 'between games a little of the memory fades back');
+
+  // a game with blue light reaching the learning centre, without and with learning
+  const blue = defaultSetup(); blue[KEY.gBlue] = BLUE_STANDARD;
+  const seeing = play(blue, 3);
+  check(seeing.kcEver > 0 && seeing.kcStorm < 0.1 && seeing.memory === null, `blue light on: ${seeing.kcEver} Kenyon cells take part in the game (${seeing.kcPerTic.toFixed(1)} per 1/35 s), the whole centre fires at once in ${(100 * seeing.kcStorm).toFixed(1)}% of the time; score ${seeing.score.toFixed(2)}`);
+  game.learn = true;
+  const learning = play(blue, 3);
+  const weak = learning.memory ? learning.memory.filter((v) => v < 0.99).length : 0;
+  check(learning.memory && learning.memory.length === lc.size && (learning.sugar + learning.bitter === 0 || weak > 0), `learning on: ${learning.sugar} drops of sugar, ${learning.bitter} of bitter, ${weak} connections weakened; score ${learning.score.toFixed(2)}`);
+  game.start(blue, 4, 0, learning.memory); while (game.step());
+  const next = game.result();
+  check(next.memory && next.memory.length === lc.size, `the fly takes its memory into the next game (score ${next.score.toFixed(2)})`);
+  game.learn = false;
+  const again = play(defaultSetup(), 3);
+  check(again.end === a.end, 'and with learning and blue light off again, the game is exactly the one from before');
+}
 
 // ---- desk setups
 {

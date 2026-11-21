@@ -19,6 +19,7 @@ export const SETUP = [
   { key: 'gContrast', name: 'flicker signal', unit: '', min: 80, max: 1500, def: 400, log: true, text: 'how strongly brightening and darkening drives the ON and OFF cells (Tm1-Tm4)' },
   { key: 'gObject', name: 'small-object signal', unit: '', min: 100, max: 2500, def: 600, log: true, text: 'how strongly small changing spots drive the object cells (T2, T3)' },
   { key: 'gDark', name: 'darkness signal', unit: '', min: 0, max: 200, def: 40, text: 'how strongly dark areas drive the steady "dark" cells (Tm9)' },
+  { key: 'gBlue', name: 'blue-light signal', unit: '', min: 0, max: 600, def: 0, text: 'how strongly blue light on the screen drives the cells that feed the learning centre (aMe12); 0 = off' },
   { key: 'turn', name: 'ball: turning', unit: '°/s per impulse/s', min: -10, max: 10, def: 3, text: 'how fast the view turns when the left and right steering cells disagree. Negative = the ball is read the other way round' },
   { key: 'trim', name: 'ball: trim', unit: 'impulses/s', min: -25, max: 25, def: 0, text: 'takes out a constant pull to one side, like trimming a joystick that drifts (in this brain the right steering cells are a little busier than the left ones)' },
   { key: 'walk', name: 'ball: walking', unit: '', min: 0, max: 0.8, def: 0.25, text: 'how fast the player walks when the walking cells fire' },
@@ -26,6 +27,8 @@ export const SETUP = [
   { key: 'trigger', name: 'trigger', unit: 'jump impulses in 0.1 s', min: 1, max: 30, def: 6, text: 'how many impulses of the jump neuron (giant fibre) within a tenth of a second pull the trigger' },
 ];
 export const NSETUP = SETUP.length;
+// the blue-light knob of the standard desk when the learning centre is switched on (the knob's own default is 0 = off)
+export const BLUE_STANDARD = 300;
 export const KEY = Object.fromEntries(SETUP.map((s, i) => [s.key, i]));
 
 export function defaultSetup() { return Float32Array.from(SETUP.map((s) => s.def)); }

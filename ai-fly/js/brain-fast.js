@@ -73,6 +73,21 @@ export class FastBrain {
 
   enableLog(size = 1 << 20) { this.log = new Int32Array(size); this.logLen = 0; }
 
+  // Learning: the outgoing connections of these neurons get their own list of strengths (pw), a copy of
+  // the wiring's synapse counts that the caller may change. pTarget says where each one goes.
+  // Everything else keeps reading the wiring directly.
+  setPlastic(neurons) {
+    const { rowptr, edges, mask, shift, n } = this;
+    this.pOff = new Int32Array(n).fill(-1);
+    let total = 0;
+    for (const i of neurons) { this.pOff[i] = total; total += rowptr[i + 1] - rowptr[i]; }
+    this.pw = new Float32Array(total); this.pBase = new Float32Array(total); this.pTarget = new Int32Array(total);
+    for (const i of neurons) {
+      for (let e = rowptr[i], k = this.pOff[i]; e < rowptr[i + 1]; e++, k++) { this.pBase[k] = (edges[e] >>> shift) - 4096; this.pTarget[k] = edges[e] & mask; }
+    }
+    this.pw.set(this.pBase);
+  }
+
   reset() {
     this.I.fill(0); for (let i = 0, I = this.I, n = this.n; i < n; i++) I[4 * i + 2] = -1;
     this.isHot.fill(0);
@@ -119,7 +134,7 @@ export class FastBrain {
   run(steps) {
     const { F, I, isHot, hot, rowptr, edges, mask, shift, silenced, EmK, EsK, KK } = this;
     const Em = this.Em, Es = this.Es, K = this.K, vT = this.p.vThresh, w0 = this.p.wSyn, cAbs = this.cAbs, KMAX = this.KMAX;
-    const fw = this.weights || null, qn = this.queue.length;
+    const pOff = this.pOff || null, pw = this.pw || null, qn = this.queue.length;
     let events = 0;
     for (let n = 0; n < steps; n++) {
       const s = this.step, sm1 = s - 1;
@@ -132,10 +147,12 @@ export class FastBrain {
         if (silenced[pre]) continue;
         const a = rowptr[pre], b = rowptr[pre + 1];
         events += b - a;
+        const po = pOff !== null ? pOff[pre] - a : -1;        // >= 0 only for neurons whose connections can learn
+        const learned = pOff !== null && pOff[pre] >= 0;
         for (let e = a; e < b; e++) {
           const x = edges[e];
           const t = (x & mask) << 2;
-          const w = (fw !== null ? fw[e] : ((x >>> shift) - 4096)) * w0;
+          const w = (learned ? pw[po + e] : ((x >>> shift) - 4096)) * w0;
           // bring the target up to date: it has faded since its last update (but not while refractory)
           const kk = s - Math.max(I[t + 2] + 1, I[t + 3]);
           let ut = F[t], gt = F[t + 1];

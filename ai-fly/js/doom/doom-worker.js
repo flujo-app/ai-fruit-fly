@@ -17,7 +17,7 @@ const breathe = () => new Promise((r) => { wake = r; chan.port2.postMessage(0); 
 async function play(m) {
   busy = true; abort = false;
   const { brain, eye } = fly;
-  game.start(m.setup, m.seed, m.fly);
+  game.start(m.setup, m.seed, m.fly, m.memory || null);
   brain.spikesTotal = 0;
   const t0 = performance.now();
   let more = true;
@@ -48,7 +48,7 @@ async function play(m) {
   const thumb = game.frame ? game.frame.slice() : new Uint8Array(FRAME_W * FRAME_H);
   busy = false;
   postMessage({ type: 'played', id: m.id, lab: m.lab, desk: m.desk, aborted: abort, result, thumb, pal: doom.state[DOOM.S.PALETTE], ms, impulses: brain.spikesTotal, speed: (result.tics / 35 * 1000) / ms },
-    [thumb.buffer, result.cmds.buffer]);
+    result.memory ? [thumb.buffer, result.cmds.buffer, result.memory.buffer] : [thumb.buffer, result.cmds.buffer]);
 }
 
 self.onmessage = async (e) => {
@@ -59,7 +59,7 @@ self.onmessage = async (e) => {
       rig = parseRig(m.rigBin, m.rigMeta);
       doom = await loadDoom({ wasm: m.wasm, wad: m.wad });
       fly = makeFly(rig, m.wiring, fast);
-      game = new Game({ doom, brain: fly.brain, eye: fly.eye, rig, remap: fly.remap, task: { ...ARENA, ...(m.task || {}) } });
+      game = new Game({ doom, brain: fly.brain, eye: fly.eye, rig, remap: fly.remap, task: { ...ARENA, ...(m.task || {}) }, learn: !!m.learn });
       const palettes = new Uint8Array(14 * 768);
       for (let i = 0; i < 14; i++) palettes.set(doom.palette(i), i * 768);
       postMessage({ type: 'ready', id: m.id, lab: m.lab, neurons: fly.neurons, connections: fly.connections, driven: fly.eye.N, palettes }, [palettes.buffer]);

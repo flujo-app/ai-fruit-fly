@@ -20,6 +20,16 @@
 // That is about 25,000 real neurons, each with its own spot on the screen. From there on (lobula,
 // lobula plate, the visual projection neurons and the rest of the brain) everything is the real wiring.
 // Flies cannot see red: brightness = 5% red + 55% green + 40% blue.
+//
+// One more signal, for the learning centre: blue light. The 7 aMe12 cells are the biggest eye input
+// of the "visual" Kenyon cells, and they are excited by the pale kind of the colour photoreceptors
+// R7/R8, which see ultraviolet and blue (Ganguly et al. 2024). A monitor gives no ultraviolet, so
+// each aMe12 cell is driven by how much blue light the facets of "its" R8 cells get (the facets
+// that look past the screen get none). HAND-MADE: that the response is steady and simply grows
+// with the light (nobody has recorded from these cells), and its upper limit: driven harder than
+// about 170 impulses per second, all 5,177 Kenyon cells of the model fire at once, which a real
+// fly's brain prevents. The other eye cells that reach the learning centre have never been recorded
+// from, so they get no made-up signal.
 
 export const KINDS = ['T4a', 'T4b', 'T4c', 'T4d', 'T5a', 'T5b', 'T5c', 'T5d', 'Tm3', 'Tm1', 'Tm2', 'Tm4', 'Tm9', 'T2', 'T2a', 'T3'];
 // what each kind of cell reports: [signal, direction]
@@ -41,6 +51,8 @@ export const EYE_DEFAULTS = {
   // how hard each kind of signal drives its cells, in impulses per second for a full-strength signal.
   // These four are part of each desk's setup in the Doom gym.
   gMotion: 1500, gContrast: 400, gObject: 600, gDark: 40,
+  gBlue: 0,          // the blue-light cells (aMe12): impulses per second if all their facets saw full blue; 0 = off
+  maxBlue: 150,      // ...but never faster than this (see above)
 };
 
 export class Eye {
@@ -56,10 +68,21 @@ export class Eye {
       const b = remap ? remap(rig.drivenIdx[i]) : rig.drivenIdx[i];
       if (b >= 0) keep.push([b, rig.drivenCol[i], rig.drivenKind[i]]);
     }
-    const N = this.N = keep.length;
-    this.cellIdx = new Int32Array(N); this.cellCol = new Uint16Array(N); this.cellKind = new Uint8Array(N);
+    // the blue-light cells come after the column cells in the lists (kind 255: they have no single column)
+    const blue = [];
+    if (rig.blueIdx) for (let j = 0; j < rig.blueIdx.length; j++) {
+      const b = remap ? remap(rig.blueIdx[j]) : rig.blueIdx[j];
+      if (b < 0) continue;
+      let sum = 0; for (let k = rig.blueStart[j]; k < rig.blueStart[j + 1]; k++) sum += rig.blueW[k];
+      blue.push({ cell: b, from: rig.blueStart[j], to: rig.blueStart[j + 1], sum });
+    }
+    this.blueCells = blue; this.N0 = keep.length;
+    const N = this.N = keep.length + blue.length;
+    this.cellIdx = new Int32Array(N); this.cellCol = new Uint16Array(N); this.cellKind = new Uint8Array(N).fill(255);
     keep.forEach(([b, c, k], i) => { this.cellIdx[i] = b; this.cellCol[i] = c; this.cellKind[i] = k; });
+    blue.forEach((b, j) => { this.cellIdx[this.N0 + j] = b.cell; });
     this.rate = new Float32Array(N);
+    this.blueOf = new Float32Array(256); this.blue = new Float32Array(C);
 
     this.lum = new Float32Array(C).fill(0.5);       // what each facet sees, 0..1 (off-screen facets: 0.5)
     this.lp = new Float32Array(C).fill(0.5);
@@ -99,7 +122,11 @@ export class Eye {
 
   // the colours of the picture (768 bytes: red, green, blue for each of the 256 palette entries)
   setPalette(rgb) {
-    for (let i = 0; i < 256; i++) this.lumOf[i] = (0.05 * rgb[3 * i] + 0.55 * rgb[3 * i + 1] + 0.40 * rgb[3 * i + 2]) / 255;
+    for (let i = 0; i < 256; i++) {
+      this.lumOf[i] = (0.05 * rgb[3 * i] + 0.55 * rgb[3 * i + 1] + 0.40 * rgb[3 * i + 2]) / 255;
+      // what the blue photoreceptor (R8 pale, most sensitive around 440 nm) gets from a monitor
+      this.blueOf[i] = (0.15 * rgb[3 * i + 1] + 0.85 * rgb[3 * i + 2]) / 255;
+    }
   }
 
   reset() {
@@ -149,8 +176,25 @@ export class Eye {
     }
     for (let c = 0; c < C; c++) { if (!onScreen[c]) continue; dOn[c] += (on[c] - dOn[c]) * aD; dOff[c] += (off[c] - dOff[c]) * aD; }
     // hand the signals to the cells
-    const { rate, cellCol, cellKind, N } = this, mx = o.maxHz;
+    const { rate, cellCol, cellKind } = this, N = this.N0, mx = o.maxHz;
     const gM = o.gMotion, gC = o.gContrast, gO = o.gObject, gD = o.gDark;
+    // blue light for the learning centre's input cells: the average over each cell's own facets
+    if (this.blueCells.length) {
+      const { blueOf, rig } = this, bc = rig.blueCol, bw = rig.blueW;
+      for (let j = 0; j < this.blueCells.length; j++) {
+        const cell = this.blueCells[j];
+        let acc = 0;
+        if (o.gBlue > 0) for (let k = cell.from; k < cell.to; k++) {
+          const c = bc[k];
+          if (!onScreen[c]) continue;                       // this facet looks past the screen, into the dim lab
+          let sum = 0; const a = tapStart[c], b = tapStart[c + 1];
+          for (let q = a; q < b; q++) sum += blueOf[frame[taps[q]]];
+          acc += bw[k] * sum / (b - a);
+        }
+        const v = o.gBlue * acc / cell.sum;
+        rate[N + j] = v > o.maxBlue ? o.maxBlue : v;
+      }
+    }
     for (let i = 0; i < N; i++) {
       const c = cellCol[i];
       if (!onScreen[c]) { rate[i] = 0; continue; }
