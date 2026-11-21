@@ -5,12 +5,14 @@
 // URL options: ?autostart, ?record, ?autopilot (the camera walks by itself), ?go (skip the start
 // screen), ?fast (a reduced brain), ?flies=, ?seconds=, ?resume, ?cam=x,z,yaw,pitch[,height],
 // ?size=1920x1080, ?testparty=N (pretend the best fly after N games won, to try the party),
-// ?learn (the learning centre switched on: blue light reaches it, kills earn sugar, hits bitter).
+// ?learn (the learning centre switched on: blue light reaches it, kills earn sugar, hits bitter),
+// ?level (the real level, Freedoom's first level, instead of the arena; the best game's replay then
+// carries a small map of where that fly went).
 import * as THREE from 'three';
 import { DoomRunner } from './runner.js';
 import { loadDoom, DOOM } from './engine.js';
-import { Replay, FRAME_W, FRAME_H, ARENA } from './game.js';
-import { Screens, scoreColour } from './views.js';
+import { Replay, FRAME_W, FRAME_H, taskOf } from './game.js';
+import { Screens, LevelMap, scoreColour } from './views.js';
 import { describeSetup, KEY } from './setup.js';
 import { Office } from '../cubicles/office.js';
 import { Workers, NearDesk } from '../cubicles/flies.js';
@@ -27,10 +29,15 @@ const P = new URLSearchParams(location.search);
 const AUTOPILOT = P.has('autopilot');
 const FAST = P.has('fast');
 const LABS = 8, PER_LAB = 128;                       // the building has 8 teams of 128 desks
-const SECONDS = Number(P.get('seconds')) || ARENA.seconds;
+const TASK = P.has('level') ? 'level' : 'arena', LEVEL = TASK === 'level';      // the arena, or the real level
+const SECONDS = Number(P.get('seconds')) || taskOf(TASK).seconds;
 const LEARNING = P.has('learn') && !FAST;      // the learning centre switched on (see js/doom/learning.js)
-const STATE_URL = `/state/doom-office-${FAST ? 'fast' : LEARNING ? 'learn' : 'full'}`;
+const STATE_URL = `/state/doom-office-${LEVEL ? 'level-' : ''}${FAST ? 'fast' : LEARNING ? 'learn' : 'full'}`;
 const nf = (x) => Math.round(x).toLocaleString('en-US');
+const pct = (x) => `${Math.round(100 * (x || 0))}%`;
+// a game in a few words: the arena counts kills, the level how far the fly got
+const told = (l) => LEVEL ? `${pct(l.way)} of the way` : `${l.kills} killed`;
+const WON = LEVEL ? 'found the exit of the level' : 'killed all 8 monsters';
 const BUTTONS = [
   { id: 'pause', label: 'PAUSE', color: 0x9aa4b5 },
   { id: 'play', label: 'PLAY', color: 0x45d483 },
@@ -81,13 +88,13 @@ addEventListener('resize', resize);
 resize();
 
 // ---------------------------------------------------------------- the games
-let screens = null, replayDoom = null, replay = null, banner = '', resetArmed = 0;
+let screens = null, replayDoom = null, replay = null, banner = '', resetArmed = 0, levelMap = null;
 const liveFrames = new Array(LABS).fill(null);     // the latest picture of each lab's running game
 const liveDesk = new Int32Array(LABS).fill(-1);    // which desk of each lab is playing
 const gameLog = [];
 let atlasDirty = true, atlasAt = 0, screenDirty = true, screenAt = 0, signsAt = 0, liveDirty = false, liveAt = 0;
 
-const runner = new DoomRunner({ labs: LABS, perLab: PER_LAB, fast: FAST, learn: LEARNING, seconds: SECONDS, onFrame, onGame, onRound });
+const runner = new DoomRunner({ labs: LABS, perLab: PER_LAB, fast: FAST, learn: LEARNING, task: TASK, seconds: SECONDS, onFrame, onGame, onRound });
 
 function onFrame(m) {
   liveFrames[m.lab] = m;
@@ -117,7 +124,7 @@ function setPlaying(on) {
 
 function updateStatus() {
   const s = runner.running ? `playing · one brain runs at ${runner.speed ? runner.speed.toFixed(2) : '–'}× real time` : (runner.games ? 'paused' : 'not started');
-  hud.set({ status: `Round ${runner.round + 1}  ·  desk ${nf(runner.playedThisRound)} of ${nf(runner.desks)}  ·  best ${runner.best ? runner.best.score.toFixed(2) : '–'} / 8  ·  perfect games ${runner.perfect}  ·  ${s}` });
+  hud.set({ status: `Round ${runner.round + 1}  ·  desk ${nf(runner.playedThisRound)} of ${nf(runner.desks)}  ·  best ${runner.best ? runner.best.score.toFixed(2) : '–'} / 8  ·  ${LEVEL ? 'found the exit' : 'perfect games'} ${runner.perfect}  ·  ${s}` });
 }
 
 async function newDesks() {
@@ -172,8 +179,8 @@ NearDesk.prototype.update = function (dt, now) {
   g.font = '600 18px "Segoe UI", system-ui';
   g.fillStyle = '#ffb547'; g.fillText(`Lab ${lab + 1} · desk ${i % PER_LAB + 1}`, 12, 23);
   g.textAlign = 'right';
-  if (live) { g.fillStyle = '#45d483'; g.fillText(`PLAYING · ${live.kills} killed · health ${Math.max(0, live.health)}`, W - 12, 23); }
-  else if (l) { g.fillStyle = l.perfect ? '#45d483' : '#8d96a7'; g.fillText(`last game: ${l.score.toFixed(2)} / 8 · ${l.kills} killed${l.dead ? ' · died' : ''}`, W - 12, 23); }
+  if (live) { g.fillStyle = '#45d483'; g.fillText(`PLAYING · ${told(live)} · health ${Math.max(0, live.health)}`, W - 12, 23); }
+  else if (l) { g.fillStyle = l.perfect ? '#45d483' : '#8d96a7'; g.fillText(`last game: ${l.score.toFixed(2)} / 8 · ${told(l)}${l.dead ? ' · died' : ''}`, W - 12, 23); }
   g.textAlign = 'left';
   this.tex.needsUpdate = true;
 };
@@ -221,9 +228,11 @@ function overlay(px, py, pw, ph, cw, ch) {
 }
 const liveW = 4 * LIVE.tw + 3 * LIVE.gap, liveH = 2 * LIVE.th + LIVE.gap;
 const liveView = overlay(LIVE.x, LIVE.y, liveW, liveH, liveW / 2, liveH / 2);
-const bestView = overlay(BEST.x, BEST.y, BEST.w, BEST.h, 320, 200);
+// the best game's screen: Doom's 320 x 200 picture; twice as fine in the level, so that the small map on it stays sharp
+const RW = LEVEL ? 640 : 320, RH = LEVEL ? 400 : 200;
+const bestView = overlay(BEST.x, BEST.y, BEST.w, BEST.h, RW, RH);
 liveView.g.fillStyle = '#0b0d12'; liveView.g.fillRect(0, 0, liveW, liveH);
-bestView.g.fillStyle = '#000'; bestView.g.fillRect(0, 0, 320, 200);
+bestView.g.fillStyle = '#000'; bestView.g.fillRect(0, 0, RW, RH);
 
 function drawLive() {
   const g = liveView.g, tw = LIVE.tw / 2, th = LIVE.th / 2, gap = LIVE.gap / 2;
@@ -234,7 +243,7 @@ function drawLive() {
     else { g.fillStyle = '#10131a'; g.fillRect(x, y, tw, th); }
     g.fillStyle = 'rgba(0,0,0,0.6)'; g.fillRect(x, y, tw, 11);
     g.fillStyle = '#eceef3'; g.font = '600 8px "Segoe UI", system-ui';
-    g.fillText(m && liveDesk[lab] >= 0 ? `LAB ${lab + 1} · DESK ${m.desk + 1} · ${m.kills} KILLED · HEALTH ${Math.max(0, m.health)}` : `LAB ${lab + 1} · between games`, x + 3, y + 8);
+    g.fillText(m && liveDesk[lab] >= 0 ? `LAB ${lab + 1} · DESK ${m.desk + 1} · ${told(m).toUpperCase()} · HEALTH ${Math.max(0, m.health)}` : `LAB ${lab + 1} · between games`, x + 3, y + 8);
   }
   liveView.tex.needsUpdate = true;
 }
@@ -244,7 +253,7 @@ function drawScreen() {
   g.fillStyle = '#0b0d12'; g.fillRect(0, 0, W, H);
   g.textBaseline = 'alphabetic'; g.textAlign = 'left';
   g.fillStyle = '#ffb547'; g.font = '800 30px "Segoe UI", system-ui'; g.fillText('DOOM GYM · LIVE FROM THE CUBICLES', 48, 66);
-  g.fillStyle = '#eceef3'; g.font = '700 52px "Segoe UI", system-ui'; g.fillText('1,024 fruit flies take turns at Doom', 48, 128);
+  g.fillStyle = '#eceef3'; g.font = '700 52px "Segoe UI", system-ui'; g.fillText(LEVEL ? "1,024 fruit flies take turns at Doom's first level" : '1,024 fruit flies take turns at Doom', 48, 128);
   g.textAlign = 'right';
   g.fillStyle = runner.running ? '#45d483' : '#9aa4b5'; g.font = '800 44px "Segoe UI", system-ui';
   g.fillText(runner.running ? 'PLAYING' : (runner.games ? 'PAUSED' : 'PRESS PLAY TO START'), W - 48, 74);
@@ -254,18 +263,18 @@ function drawScreen() {
   g.textAlign = 'left';
   const recent = gameLog.slice(-50), mean = recent.length ? recent.reduce((a, b) => a + b, 0) / recent.length : null;
   const tiles = [['ROUND', nf(runner.round + 1)], ['DESKS PLAYED', `${nf(runner.playedThisRound)} / ${nf(runner.desks)}`], ['BEST SCORE', runner.best ? `${runner.best.score.toFixed(2)} / 8` : '–'],
-    ['AVERAGE', mean != null ? mean.toFixed(2) : '–'], ['PERFECT GAMES', String(runner.perfect)], ['ONE BRAIN RUNS AT', runner.speed ? `${runner.speed.toFixed(2)}×` : '–']];
+    ['AVERAGE', mean != null ? mean.toFixed(2) : '–'], [LEVEL ? 'FOUND THE EXIT' : 'PERFECT GAMES', String(runner.perfect)], ['ONE BRAIN RUNS AT', runner.speed ? `${runner.speed.toFixed(2)}×` : '–']];
   const tw = (W - 96 - 5 * 16) / 6;
   tiles.forEach(([k, v], i) => {
     const x = 48 + i * (tw + 16);
     g.fillStyle = '#141820'; g.fillRect(x, 160, tw, 116);
     g.fillStyle = '#8d96a7'; g.font = '600 22px "Segoe UI", system-ui'; g.fillText(k, x + 20, 200);
-    g.fillStyle = k === 'PERFECT GAMES' && runner.perfect ? '#45d483' : '#eceef3'; g.font = '700 46px "Segoe UI", system-ui'; g.fillText(v, x + 20, 254);
+    g.fillStyle = (k === 'PERFECT GAMES' || k === 'FOUND THE EXIT') && runner.perfect ? '#45d483' : '#eceef3'; g.font = '700 46px "Segoe UI", system-ui'; g.fillText(v, x + 20, 254);
   });
   g.fillStyle = '#8d96a7'; g.font = '700 22px "Segoe UI", system-ui';
   g.fillText(`PLAYING RIGHT NOW (ONE BRAIN PER PROCESSOR CORE)`, LIVE.x, LIVE.y - 14);
   const b = runner.best;
-  g.fillText(b ? `BEST GAME SO FAR · LAB ${b.lab + 1}, DESK ${b.desk + 1} · ${b.score.toFixed(2)} / 8` : 'BEST GAME SO FAR', BEST.x, BEST.y - 14);
+  g.fillText(b ? `BEST GAME SO FAR · LAB ${b.lab + 1}, DESK ${b.desk + 1} · ${b.score.toFixed(2)} / 8${LEVEL ? ' · ' + told(b).toUpperCase() + ' TO THE EXIT' : ''}` : 'BEST GAME SO FAR', BEST.x, BEST.y - 14);
   if (banner) {
     g.fillStyle = 'rgba(69,212,131,0.16)'; g.fillRect(BEST.x, BEST.y + BEST.h + 14, BEST.w, 64);
     g.strokeStyle = '#45d483'; g.lineWidth = 3; g.strokeRect(BEST.x, BEST.y + BEST.h + 14, BEST.w, 64);
@@ -318,7 +327,7 @@ function drawScreen() {
 // ---------------------------------------------------------------- the replay of the best game (a Doom of its own, on the page)
 function showReplay() {
   if (!replayDoom || !runner.best) return;
-  replay = new Replay(replayDoom, { ...ARENA, seconds: SECONDS }).start(runner.best.record);
+  replay = new Replay(replayDoom, taskOf(TASK, { seconds: SECONDS })).start(runner.best.record);
   replay.hold = 0;
   screenDirty = true;
 }
@@ -328,12 +337,20 @@ function replayTick(now) {
   replayAt = now;
   if (replay.hold > 0) { if (--replay.hold === 0) replay.start(replay.rec); }
   else if (!replay.step()) replay.hold = 70;
-  bestView.g.drawImage(screens.canvasOf(replayDoom.renderFull(), replayDoom.state[DOOM.S.PALETTE], 320, 200, 'replay'), 0, 0);
+  bestView.g.imageSmoothingEnabled = false;
+  bestView.g.drawImage(screens.canvasOf(replayDoom.renderFull(), replayDoom.state[DOOM.S.PALETTE], 320, 200, 'replay'), 0, 0, RW, RH);
+  // in the level: a small map in the corner, with where the best fly went and where it is in the replay
+  if (levelMap && runner.best) {
+    const st = replayDoom.state, mw = 250, mh = 176, g = bestView.g;
+    g.globalAlpha = 0.9;
+    levelMap.draw(g, RW - mw - 8, 8, mw, mh, { path: runner.best.path, upTo: replay.tic / 5 + 1, at: [st[DOOM.S.X] / 65536, st[DOOM.S.Y] / 65536] });
+    g.globalAlpha = 1; g.strokeStyle = 'rgba(255,255,255,0.35)'; g.lineWidth = 1; g.strokeRect(RW - mw - 8.5, 7.5, mw + 1, mh + 1);
+  }
   bestView.tex.needsUpdate = true;
   if (bigScreen.visible) { bigView.g.drawImage(bestView.c, 0, 0); bigView.tex.needsUpdate = true; }
 }
 // key 3: the best game, filling the view (a screen that follows the camera)
-const bigView = (() => { const c = document.createElement('canvas'); c.width = 320; c.height = 200; const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.magFilter = THREE.NearestFilter; tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter; return { c, g: c.getContext('2d'), tex }; })();
+const bigView = (() => { const c = document.createElement('canvas'); c.width = RW; c.height = RH; const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.magFilter = THREE.NearestFilter; tex.generateMipmaps = false; tex.minFilter = THREE.LinearFilter; return { c, g: c.getContext('2d'), tex }; })();
 const bigScreen = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.2), new THREE.MeshBasicMaterial({ map: bigView.tex, toneMapped: false, depthTest: false }));
 bigScreen.renderOrder = 10; bigScreen.visible = false; bigScreen.position.set(0, 0, -1.02);
 camera.add(bigScreen); scene.add(camera);
@@ -347,7 +364,7 @@ function toggleBig(on = !bigScreen.visible) {
 // ---------------------------------------------------------------- the winner
 function startParty(lab, desk, r) {
   const name = `the fly at desk ${desk + 1} in lab ${lab + 1}`;
-  banner = r.perfect ? `Game ${nf(runner.games)}: ${name} killed all 8 monsters!` : `Party test: ${name} has the best score so far (${r.score.toFixed(2)} of 8).`;
+  banner = r.perfect ? `Game ${nf(runner.games)}: ${name} ${WON}!` : `Party test: ${name} has the best score so far (${r.score.toFixed(2)} of 8).`;
   party.start(lab, desk, `DESK ${desk + 1} · LAB ${lab + 1} · ${r.perfect ? '8/8' : r.score.toFixed(1) + '/8'}`);
   party.desk.winner = true; party.desk.drawnKey = '';
   showReplay();
@@ -361,7 +378,7 @@ function startParty(lab, desk, r) {
 async function giveSugar() {
   const from = camera.position.clone().add(player.forward.multiplyScalar(0.5)).add(new THREE.Vector3(0, -0.25, 0));
   if (!(await party.giveSugar(from))) return;
-  hud.toast(LEARNING ? 'Sugar! It sticks out its tongue and drinks. During its games it already got a drop for every monster it killed.' : 'Sugar! It sticks out its tongue and drinks. (Its learning centre is switched off here; add ?learn to the address to switch it on.)', 9);
+  hud.toast(LEARNING ? `Sugar! It sticks out its tongue and drinks. During its games it already got a drop for every monster it killed${LEVEL ? ' and for new ground' : ''}.` : 'Sugar! It sticks out its tongue and drinks. (Its learning centre is switched off here; add ?learn to the address to switch it on.)', 9);
 }
 
 async function offerContract() {
@@ -495,7 +512,7 @@ async function autopilot() {
     k++;
   }
   if (party.active) {
-    caption(`Game ${nf(runner.games)}: the fly at desk ${party.fly + 1} in lab ${party.lab + 1} killed all 8 monsters`);
+    caption(`Game ${nf(runner.games)}: the fly at desk ${party.fly + 1} in lab ${party.lab + 1} ${WON}`);
     await glide({ x: 0, y: 4.8, z: 1.5 }, 3, [party.c.x, 1.5, party.c.z]);
     await wait(2500);
     caption('A path on the floor leads to the winner');
@@ -593,7 +610,9 @@ $('opt-record').checked = P.has('record');
 runner.onStatus = (t) => { $('splash-status').textContent = t ? t[0].toUpperCase() + t.slice(1) + '…' : ''; };
 runner.init().then(async (info) => {
   screens = new Screens(runner.palettes);
-  $('splash-mode').textContent = FAST ? `FAST MODE: a reduced brain of ${nf(info.neurons)} of the 138,639 neurons.` : `Complete brain: ${nf(info.neurons)} neurons and ${nf(info.connections)} connections for every player.`;
+  $('splash-mode').textContent = (FAST ? `FAST MODE: a reduced brain of ${nf(info.neurons)} of the 138,639 neurons.` : `Complete brain: ${nf(info.neurons)} neurons and ${nf(info.connections)} connections for every player.`)
+    + (LEVEL ? " The task: Freedoom's real first level, as a human player starts it. The fly's own landing cells press the \"use\" key that opens doors." : ' The task: the arena. Add ?level to the address for a real level.');
+  if (LEVEL) { levelMap = new LevelMap(runner.wad); $('splash-goal').textContent = 'When a fly finds the exit of the level'; }
   if (P.has('resume') && await runner.load(STATE_URL)) for (const l of runner.last) if (l) gameLog.push(l.score);
   replayDoom = await loadDoom({ wasm: runner.wasm, wad: runner.wad });
   showReplay();

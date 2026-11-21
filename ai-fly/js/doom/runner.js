@@ -10,13 +10,15 @@ import { compileDoom, fetchDoomFiles } from './engine.js';
 import { readData, loadWiring } from './load.js';
 import { NSETUP, KEY, BLUE_STANDARD, defaultSetup, randomSetup, rng } from './setup.js';
 import { evolve } from './evolve.js';
-import { ARENA } from './game.js';
+import { taskOf } from './game.js';
 
 export class DoomRunner {
+  // task: 'arena' (the round room with 8 monsters) or 'level' (Freedoom's real first level), see js/doom/game.js.
   // learn: blue light reaches the flies' learning centre, and kills earn sugar and hits bitter (js/doom/learning.js).
   // Each fly then keeps its own memory from game to game. Not possible with the reduced brain (fast).
-  constructor({ labs = 8, perLab = 128, fast = false, learn = false, seconds = ARENA.seconds, elite = 0.3, onFrame = null, onGame = null, onRound = null, onStatus = null } = {}) {
-    Object.assign(this, { labs, perLab, fast, learn: learn && !fast, seconds, elite, onFrame, onGame, onRound, onStatus });
+  constructor({ labs = 8, perLab = 128, fast = false, learn = false, task = 'arena', seconds = 0, elite = 0.3, onFrame = null, onGame = null, onRound = null, onStatus = null } = {}) {
+    const t = taskOf(task);
+    Object.assign(this, { labs, perLab, fast, learn: learn && !fast, task: t.name, level: !!t.level, seconds: seconds || t.seconds, elite, onFrame, onGame, onRound, onStatus });
     this.workers = []; this.pending = new Map(); this.nextId = 1;
     this.running = false; this.loopBusy = false; this.watched = -1;
     this.info = null; this.palettes = null;
@@ -70,7 +72,7 @@ export class DoomRunner {
         const mine = this.shared ? wiring : wiring.slice(0);
         const failed = new Promise((_, reject) => { w.onerror = (e) => reject(new Error(e.message || 'the lab did not load')); });
         try {
-          const ready = await Promise.race([failed, this.call(w, { type: 'init', lab, fast: this.fast, learn: this.learn, wasm: module, wad: wad.slice(0), wiring: mine, rigBin: rigBin.slice(0), rigMeta, task: { seconds: this.seconds } }, this.shared ? [] : [mine])]);
+          const ready = await Promise.race([failed, this.call(w, { type: 'init', lab, fast: this.fast, learn: this.learn, wasm: module, wad: wad.slice(0), wiring: mine, rigBin: rigBin.slice(0), rigMeta, task: { name: this.task, seconds: this.seconds } }, this.shared ? [] : [mine])]);
           w.onerror = (e) => { console.error(e); say(`lab ${lab + 1} stopped: ${e.message || 'unknown reason'}`); };
           this.workers[lab] = w;
           return ready;
@@ -129,14 +131,15 @@ export class DoomRunner {
     this.score[i] = r.score;
     this.fitness[i] = this.last[i] && this.last[i].sameSetup ? 0.5 * this.fitness[i] + 0.5 * r.score : r.score;
     this.records[i] = { seed: r.seed, cmds: r.cmds };
+    const lv = r.level;       // in a real level: how far the fly got and where it went
     this.last[i] = { score: r.score, kills: r.kills, perfect: r.perfect, dead: r.dead, why: r.why, seconds: r.tics / 35, shots: r.shots, hits: r.hits, health: r.health, thumb: m.thumb, pal: m.pal, round: this.round, sameSetup: true,
-      kcEver: r.kcEver, kcPerTic: r.kcPerTic, sugar: r.sugar, bitter: r.bitter };
+      kcEver: r.kcEver, kcPerTic: r.kcPerTic, sugar: r.sugar, bitter: r.bitter, way: lv ? lv.way : 0, doors: lv ? lv.doors : 0, path: lv ? lv.path : null };
     if (r.memory) { this.memory[i] = r.memory; this.drops.sugar += r.sugar; this.drops.bitter += r.bitter; }
     this.games++; this.gameSeconds += r.tics / 35; this.wallSeconds += m.ms / 1000; this.impulses += m.impulses;
     this.speeds.push(m.speed); if (this.speeds.length > 24) this.speeds.shift();
     if (r.perfect) { this.perfect++; if (!this.firstPerfect) this.firstPerfect = { round: this.round + 1, lab, desk, game: this.games }; }
     const better = !this.best || r.score > this.best.score + 1e-6 || (r.perfect && this.best.perfect && r.tics < this.best.tics);
-    if (better) this.best = { score: r.score, kills: r.kills, perfect: r.perfect, tics: r.tics, lab, desk, round: this.round + 1, setup: Float32Array.from(this.setups[i]), record: this.records[i] };
+    if (better) this.best = { score: r.score, kills: r.kills, perfect: r.perfect, tics: r.tics, lab, desk, round: this.round + 1, setup: Float32Array.from(this.setups[i]), record: this.records[i], way: lv ? lv.way : 0, doors: lv ? lv.doors : 0, path: lv ? lv.path : null };
     if (this.onGame) this.onGame({ index: i, lab, desk, result: r, first: r.perfect && this.perfect === 1, better });
   }
 
@@ -197,25 +200,25 @@ export class DoomRunner {
   // ---- saving and continuing (a round with complete brains takes a long time) ----
   snapshot() {
     return {
-      v: 1, labs: this.labs, perLab: this.perLab, fast: this.fast, seconds: this.seconds, round: this.round, games: this.games, perfect: this.perfect,
+      v: 1, task: this.task, labs: this.labs, perLab: this.perLab, fast: this.fast, seconds: this.seconds, round: this.round, games: this.games, perfect: this.perfect,
       firstPerfect: this.firstPerfect, history: this.history, gameSeconds: this.gameSeconds, wallSeconds: this.wallSeconds, impulses: this.impulses,
       setups: this.setups.map((s) => Array.from(s, (x) => +x.toFixed(4))), fitness: Array.from(this.fitness, (x) => +x.toFixed(3)), score: Array.from(this.score, (x) => +x.toFixed(3)),
-      last: this.last.map((l) => l && { score: +l.score.toFixed(3), kills: l.kills, perfect: l.perfect, dead: l.dead, seconds: +l.seconds.toFixed(1), shots: l.shots, hits: l.hits, health: l.health, round: l.round, sameSetup: l.sameSetup }),
-      best: this.best && { ...this.best, setup: Array.from(this.best.setup), record: { seed: this.best.record.seed, cmds: Array.from(this.best.record.cmds) } },
+      last: this.last.map((l) => l && { score: +l.score.toFixed(3), kills: l.kills, perfect: l.perfect, dead: l.dead, seconds: +l.seconds.toFixed(1), shots: l.shots, hits: l.hits, health: l.health, round: l.round, sameSetup: l.sameSetup, way: +(l.way || 0).toFixed(4), doors: l.doors || 0 }),
+      best: this.best && { ...this.best, setup: Array.from(this.best.setup), record: { seed: this.best.record.seed, cmds: Array.from(this.best.record.cmds) }, path: this.best.path && Array.from(this.best.path) },
       learn: this.learn, drops: this.drops,
       memory: this.memory.map((m) => m && btoa(String.fromCharCode(...Uint8Array.from(m, (x) => Math.round(255 * Math.max(0, Math.min(1, x))))))),
     };
   }
 
   restore(s) {
-    if (!s || s.v !== 1 || s.labs !== this.labs || s.perLab !== this.perLab || !!s.fast !== !!this.fast || !!s.learn !== !!this.learn || s.seconds !== this.seconds || s.setups[0].length !== NSETUP) return false;
+    if (!s || s.v !== 1 || (s.task || 'arena') !== this.task || s.labs !== this.labs || s.perLab !== this.perLab || !!s.fast !== !!this.fast || !!s.learn !== !!this.learn || s.seconds !== this.seconds || s.setups[0].length !== NSETUP) return false;
     if (s.memory) this.memory = s.memory.map((b) => b && Float32Array.from(atob(b), (ch) => ch.charCodeAt(0) / 255));
     if (s.drops) this.drops = s.drops;
     this.round = s.round; this.games = s.games; this.perfect = s.perfect; this.firstPerfect = s.firstPerfect; this.history = s.history;
     this.gameSeconds = s.gameSeconds; this.wallSeconds = s.wallSeconds; this.impulses = s.impulses;
     this.setups = s.setups.map((a) => Float32Array.from(a)); this.fitness = Float32Array.from(s.fitness); this.score = Float32Array.from(s.score);
-    this.last = s.last.map((l) => l && { ...l, thumb: null, pal: 0 });
-    this.best = s.best && { ...s.best, setup: Float32Array.from(s.best.setup), record: { seed: s.best.record.seed, cmds: Int16Array.from(s.best.record.cmds) } };
+    this.last = s.last.map((l) => l && { ...l, thumb: null, pal: 0, path: null });
+    this.best = s.best && { ...s.best, setup: Float32Array.from(s.best.setup), record: { seed: s.best.record.seed, cmds: Int16Array.from(s.best.record.cmds) }, path: s.best.path ? Int16Array.from(s.best.path) : null };
     return true;
   }
 

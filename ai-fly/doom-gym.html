@@ -29,7 +29,7 @@
     <div><span>Games</span><b id="st-games">0</b></div>
     <div><span>Best score</span><b id="st-best">–</b></div>
     <div><span>Average</span><b id="st-mean">–</b></div>
-    <div><span>Perfect games</span><b id="st-solved">0</b></div>
+    <div><span id="st-solved-name">Perfect games</span><b id="st-solved">0</b></div>
     <div><span>One brain runs at</span><b id="st-speed">–</b></div>
     <div><span>Nerve impulses</span><b id="st-impulses">0</b></div>
   </section>
@@ -39,7 +39,7 @@
       <div class="card-head"><h2 id="live-title">Playing right now</h2><span class="muted">one complete brain keeps one processor core busy, so this many flies can play at the same moment · click one to look inside its head</span></div>
       <div id="banner" class="banner"></div>
       <canvas id="live"></canvas>
-      <div class="card-head"><h2>Every desk's latest game</h2><span class="muted">the last picture of each game · bar = score out of 8 · green frame = killed all 8 monsters · click a desk to replay its game</span></div>
+      <div class="card-head"><h2>Every desk's latest game</h2><span class="muted" id="wall-note">the last picture of each game · bar = score out of 8 · green frame = killed all 8 monsters · click a desk to replay its game</span></div>
       <canvas id="wall"></canvas>
       <div id="tip" class="tip hidden"></div>
     </section>
@@ -48,6 +48,8 @@
       <div class="card">
         <div class="card-head"><h2 id="replay-title">Best game so far</h2><span class="muted" id="replay-note">no game yet</span></div>
         <canvas id="replay" width="320" height="200"></canvas>
+        <canvas id="map" width="860" height="600" hidden></canvas>
+        <div class="legend" id="map-legend" hidden><i style="--c:#ffffff"></i>where this fly went <i style="--c:#5fd4ff"></i>the way to the exit <i style="--c:#ffb547"></i>doors <i style="--c:#ff5d62"></i>the fly now</div>
       </div>
       <div class="card">
         <div class="card-head"><h2 id="head-title">Inside one fly's head</h2><span class="muted" id="head-note"></span></div>
@@ -70,7 +72,7 @@
   </main>
 
   <footer class="honest">
-    <b>How it works:</b> the game is the real Doom engine (its open-source release) with the free Freedoom data, in a round room with 8 monsters and a shotgun.
+    <b>How it works:</b> the game is the real Doom engine (its open-source release) with the free Freedoom data, <span id="how-task">in a round room with 8 monsters and a shotgun</span>.
     Every 1/35 second the picture is spread over the facets of the fly's two eyes (about 790 per eye; a fly cannot see red). The brain is the complete FlyWire map
     (138,639 neurons, 15,091,983 connections), simulated impulse by impulse with the settings of Shiu et al. 2024. The game controller reads the fly's own output cells:
     the steering cells DNa01 and DNa02 turn, the walking cells DNg100 and DNg97 walk, the moonwalker cells back up, and the giant fibre, the neuron that makes a fly jump

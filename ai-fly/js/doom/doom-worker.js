@@ -3,7 +3,7 @@
 import { loadDoom, DOOM } from './engine.js';
 import { parseRig } from './eye.js';
 import { makeFly } from './load.js';
-import { Game, ARENA, FRAME_W, FRAME_H } from './game.js';
+import { Game, taskOf, FRAME_W, FRAME_H } from './game.js';
 
 let doom = null, fly = null, game = null, rig = null, fast = false;
 let watching = false, abort = false, busy = false;
@@ -28,7 +28,8 @@ async function play(m) {
     // a picture for the page every 3rd tic (the wall and the live view)
     if (m.live && (game.tic % 3 === 0 || !more)) {
       const st = doom.state, frame = game.frame.slice();
-      const msg = { type: 'frame', lab: m.lab, desk: m.desk, tic: game.tic, frame, pal: st[DOOM.S.PALETTE], health: st[DOOM.S.HEALTH], kills: st[DOOM.S.PLAYER_KILLS], ammo: st[DOOM.S.AMMO], rates: game.rates };
+      const msg = { type: 'frame', lab: m.lab, desk: m.desk, tic: game.tic, frame, pal: st[DOOM.S.PALETTE], health: st[DOOM.S.HEALTH], kills: st[DOOM.S.PLAYER_KILLS], ammo: st[DOOM.S.AMMO], rates: game.rates,
+        way: game.way, x: st[DOOM.S.X] / 65536, y: st[DOOM.S.Y] / 65536 };       // in a real level: how far along the way to the exit, and where (for the page's map; the fly never gets this)
       const move = [frame.buffer];
       if (watching) {
         // for the selected desk: what each facet sees, and a sample of the neurons that just fired
@@ -47,8 +48,10 @@ async function play(m) {
   const result = game.result();
   const thumb = game.frame ? game.frame.slice() : new Uint8Array(FRAME_W * FRAME_H);
   busy = false;
-  postMessage({ type: 'played', id: m.id, lab: m.lab, desk: m.desk, aborted: abort, result, thumb, pal: doom.state[DOOM.S.PALETTE], ms, impulses: brain.spikesTotal, speed: (result.tics / 35 * 1000) / ms },
-    result.memory ? [thumb.buffer, result.cmds.buffer, result.memory.buffer] : [thumb.buffer, result.cmds.buffer]);
+  const move = [thumb.buffer, result.cmds.buffer];
+  if (result.memory) move.push(result.memory.buffer);
+  if (result.level) move.push(result.level.path.buffer);
+  postMessage({ type: 'played', id: m.id, lab: m.lab, desk: m.desk, aborted: abort, result, thumb, pal: doom.state[DOOM.S.PALETTE], ms, impulses: brain.spikesTotal, speed: (result.tics / 35 * 1000) / ms }, move);
 }
 
 self.onmessage = async (e) => {
@@ -59,7 +62,7 @@ self.onmessage = async (e) => {
       rig = parseRig(m.rigBin, m.rigMeta);
       doom = await loadDoom({ wasm: m.wasm, wad: m.wad });
       fly = makeFly(rig, m.wiring, fast);
-      game = new Game({ doom, brain: fly.brain, eye: fly.eye, rig, remap: fly.remap, task: { ...ARENA, ...(m.task || {}) }, learn: !!m.learn });
+      game = new Game({ doom, brain: fly.brain, eye: fly.eye, rig, remap: fly.remap, task: taskOf(m.task && m.task.name, m.task || {}), learn: !!m.learn });
       const palettes = new Uint8Array(14 * 768);
       for (let i = 0; i < 14; i++) palettes.set(doom.palette(i), i * 768);
       postMessage({ type: 'ready', id: m.id, lab: m.lab, neurons: fly.neurons, connections: fly.connections, driven: fly.eye.N, palettes }, [palettes.buffer]);
