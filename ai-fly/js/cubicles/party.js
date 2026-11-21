@@ -35,7 +35,8 @@ function textSprite(text, color = '#241503', bg = '#ffb547', w = 512, h = 128, s
 }
 
 export class Party {
-  constructor(scene, office, workers, grid) {
+  // jobTitle: what the management contract offers
+  constructor(scene, office, workers, grid, jobTitle = 'Head of Döner') {
     this.scene = scene;
     this.office = office;
     this.workers = workers;
@@ -79,7 +80,7 @@ export class Party {
     const pg = pc.getContext('2d');
     pg.fillStyle = '#f7f3ea'; pg.fillRect(0, 0, 256, 340);
     pg.fillStyle = '#1b1406'; pg.font = '800 30px "Segoe UI", system-ui'; pg.textAlign = 'center'; pg.fillText('CONTRACT', 128, 50);
-    pg.font = '600 20px "Segoe UI", system-ui'; pg.fillText('Head of Döner', 128, 84);
+    pg.font = '600 20px "Segoe UI", system-ui'; pg.fillText(jobTitle, 128, 84);
     pg.fillStyle = '#b9b2a3'; for (let y = 120; y < 270; y += 22) pg.fillRect(30, y, 196, 5);
     pg.fillStyle = '#1b1406'; pg.font = '500 18px "Segoe UI", system-ui'; pg.fillText('sign here: ________', 128, 310);
     const ptex = new THREE.CanvasTexture(pc); ptex.colorSpace = THREE.SRGBColorSpace;
