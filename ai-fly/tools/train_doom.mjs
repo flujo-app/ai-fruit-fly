@@ -19,7 +19,7 @@ if (!isMainThread) {
   const game = new Game({ doom, brain, eye, rig, remap, task: { ...ARENA, seconds } });
   parentPort.on('message', (m) => {
     const t0 = performance.now();
-    game.start(m.setup, m.seed);
+    game.start(m.setup, m.seed, m.desk);
     while (game.step());
     const r = game.result();
     parentPort.postMessage({ desk: m.desk, score: r.score, kills: r.kills, perfect: r.perfect, dead: r.dead, tics: r.tics, shots: r.shots, hits: r.hits, ms: performance.now() - t0 });

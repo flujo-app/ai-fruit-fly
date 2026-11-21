@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Doom Cubicles</title>
+<link rel="stylesheet" href="css/cubicles.css">
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+  "webm-muxer": "https://cdn.jsdelivr.net/npm/webm-muxer@5.1.4/build/webm-muxer.mjs"
+} }
+</script>
+</head>
+<body>
+<canvas id="view"></canvas>
+<div id="splash">
+  <div class="card">
+    <p class="kicker">DOOM GYM · OPEN-PLAN EDITION</p>
+    <h1>Doom Cubicles</h1>
+    <p>1,024 fruit flies sit at 1,024 desks and take turns at Doom. Each player has a complete fly brain:
+      the picture goes into its eyes, and its own steering, walking and jump neurons work the controller.
+      You are the supervisor.</p>
+    <ul>
+      <li><b>WASD</b> to walk, <b>Shift</b> to run, the <b>mouse</b> to look around</li>
+      <li>The <b>big screen</b> on the deck shows the games that are running and the best game so far; <b>PLAY</b> and <b>PAUSE</b> are on the console</li>
+      <li>A <b>blue marker</b> floats over every desk that is playing right now. Walk up to one and watch</li>
+      <li>When a fly kills all 8 monsters, follow the <b>path on the floor</b> to it, then press <b>1</b> for a sugar cube or <b>2</b> for a management contract</li>
+      <li><b>3</b> shows the best game so far, <b>R</b> records a video of what you see</li>
+    </ul>
+    <p id="splash-mode" class="status"></p>
+    <label><input type="checkbox" id="opt-start"> Let them play right away</label>
+    <label><input type="checkbox" id="opt-record"> Record a video from the start</label>
+    <button id="enter" disabled>Enter the office</button>
+    <p id="splash-status" class="status"></p>
+    <p class="links"><a href="doom-gym.html">Doom Gym</a> · <a href="cubicles.html">Cubicles</a> · <a href="fly-gym.html">Fly Gym</a> · <a href="index.html">Fly world</a></p>
+  </div>
+</div>
+<script type="module" src="js/doom/cubicles-main.js"></script>
+</body>
+</html>

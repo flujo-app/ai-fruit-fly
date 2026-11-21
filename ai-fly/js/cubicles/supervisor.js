@@ -15,7 +15,8 @@ export const BUTTONS = [
 ];
 
 export class Supervisor {
-  constructor(scene) {
+  // buttons: the console's push buttons (the Doom office has its own set)
+  constructor(scene, buttons = BUTTONS) {
     this.scene = scene;
     // ---------------------------------------------------------------- the wall screen
     this.canvas = document.createElement('canvas');
@@ -53,8 +54,8 @@ export class Supervisor {
     const lc = document.createElement('canvas'); lc.width = 2048; lc.height = 128;
     const lg = lc.getContext('2d');
     lg.fillStyle = '#e9edf3'; lg.font = '700 58px "Segoe UI", system-ui'; lg.textAlign = 'center'; lg.textBaseline = 'middle';
-    const spacing = (CONSOLE.w - 0.6) / (BUTTONS.length - 1);
-    BUTTONS.forEach((b, i) => lg.fillText(b.label, ((0.3 + i * spacing) / CONSOLE.w) * 2048, 64));
+    const spacing = (CONSOLE.w - 0.6) / (buttons.length - 1);
+    buttons.forEach((b, i) => lg.fillText(b.label, ((0.3 + i * spacing) / CONSOLE.w) * 2048, 64));
     const ltex = new THREE.CanvasTexture(lc); ltex.colorSpace = THREE.SRGBColorSpace;
     const labels = new THREE.Mesh(new THREE.PlaneGeometry(CONSOLE.w, CONSOLE.w / 16), new THREE.MeshBasicMaterial({ map: ltex, transparent: true, toneMapped: false }));
     labels.rotation.set(-Math.PI / 2, 0, Math.PI);   // readable for someone facing +z
@@ -62,7 +63,7 @@ export class Supervisor {
     this.panel.add(labels);
     // the buttons themselves
     this.buttons = new Map();
-    BUTTONS.forEach((b, i) => {
+    buttons.forEach((b, i) => {
       const x = CONSOLE.w / 2 - 0.3 - i * spacing;   // the supervisor faces +z, so their left is +x
       const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.16, 0.17, 0.05, 28), new THREE.MeshStandardMaterial({ color: 0x0a0b0e, metalness: 0.7, roughness: 0.3 }));
       ring.position.set(x, 0.045, 0.05);

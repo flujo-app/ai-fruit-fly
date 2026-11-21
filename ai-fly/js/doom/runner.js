@@ -112,7 +112,7 @@ export class DoomRunner {
     for (let d = 0; d < this.perLab && this.running; d++) {
       const i = lab * this.perLab + d;
       if (this.score[i] >= 0) continue;                       // already played this round (after a reload)
-      const m = await this.call(w, { type: 'play', lab, desk: d, setup: this.setups[i], seed, live: true });
+      const m = await this.call(w, { type: 'play', lab, desk: d, fly: i, setup: this.setups[i], seed, live: true });
       if (m.aborted) return;
       this._gameDone(i, lab, d, m);
     }
