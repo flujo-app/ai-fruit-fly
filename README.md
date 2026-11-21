@@ -33,7 +33,7 @@ Then open <http://127.0.0.1:8765>. You need Python and a current browser, nothin
 
 | | Pick a page | What you'll see |
 |---|---|---|
-| 🪰 | [**Fly world**](#meet-the-fly) | One fly on a picnic cloth. Feed it, swat at it, watch its brain. |
+| 🦟 | [**Fly world**](#meet-the-fly) | One fly on a picnic cloth. Feed it, swat at it, watch its brain. |
 | 🥙 | [**Döner Dev Fly**](#teach-it-to-code) | A fly learns to put a döner app together, by smell. |
 | 🏋️ | [**Fly Gym**](#fly-gym-1024-flies-hard-mode) | 1,024 flies type a whole program, one piece at a time. |
 | 🏢 | [**Cubicles**](#cubicles-walk-through-the-office) | The Fly Gym as an office you can walk through. |
@@ -195,9 +195,9 @@ The same games in the office: <http://127.0.0.1:8765/doom-cubicles.html>. Every 
 <table>
   <tr>
     <td align="center" width="25%"><h1>138,639</h1>neurons in every brain<br><sub>the complete FlyWire map</sub></td>
-    <td align="center" width="25%"><h1>15 million</h1>connections between them<br><sub>15,091,983, to be exact</sub></td>
+    <td align="center" width="25%"><h1>15 million</h1>connections<br><sub>15,091,983, to be exact</sub></td>
     <td align="center" width="25%"><h1>1,024</h1>flies training at once<br><sub>each with its own memory</sub></td>
-    <td align="center" width="25%"><h1>8 of 8</h1>monsters for the best fly<br><sub><a href="ai-fly/README.md#what-gets-better-the-desk-not-the-fly">in the first measured run</a></sub></td>
+    <td align="center" width="25%"><h1>8 of 8</h1>Doom monsters killed<br><sub><a href="ai-fly/README.md#what-gets-better-the-desk-not-the-fly">the best fly's game</a></sub></td>
   </tr>
 </table>
 
