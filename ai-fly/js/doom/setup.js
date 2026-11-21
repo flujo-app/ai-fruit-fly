@@ -10,6 +10,8 @@
 //   turning      DNa01 and DNa02, left side minus right side (the fly's steering cells)
 //   walking      DNg100 and DNg97 (drive forward walking), minus the moonwalker cells MDN (walk backwards)
 //   the trigger  DNp01, the giant fibre: the cell that makes a fly jump away when something rushes at it
+//   "use"        DNp07 and DNp10, the landing cells: they stretch the legs out towards a surface that comes
+//                close. Only in a real level, where "use" opens doors and works switches.
 // Which cell stands for which key is hand-made. The cells themselves and everything before them are not.
 
 export const SETUP = [
@@ -25,6 +27,7 @@ export const SETUP = [
   { key: 'walk', name: 'ball: walking', unit: '', min: 0, max: 0.8, def: 0.25, text: 'how fast the player walks when the walking cells fire' },
   { key: 'back', name: 'ball: backing up', unit: '', min: 0, max: 2, def: 0.5, text: 'how fast the player backs up when the moonwalker cells fire' },
   { key: 'trigger', name: 'trigger', unit: 'jump impulses in 0.1 s', min: 1, max: 30, def: 6, text: 'how many impulses of the jump neuron (giant fibre) within a tenth of a second pull the trigger' },
+  { key: 'use', name: 'use key', unit: 'landing impulses in 0.1 s', min: 1, max: 30, def: 4, late: true, text: 'only in a real level: how many impulses of the landing cells (DNp07, DNp10) within a tenth of a second press the "use" key, which opens doors and works switches' },
 ];
 export const NSETUP = SETUP.length;
 // the blue-light knob of the standard desk when the learning centre is switched on (the knob's own default is 0 = off)
@@ -40,19 +43,36 @@ export function rng(seed) {
 }
 const gauss = (rand) => (rand() + rand() + rand() + rand() - 2) * 1.73;
 
+// Knobs marked `late` were added after the first measured runs. They take their chance from a side
+// stream that is started from the other knobs' values, so that the desks of those earlier runs still
+// come out exactly the same. They must stay at the end of the list.
+const FIRST = SETUP.findIndex((s) => s.late) < 0 ? SETUP.length : SETUP.findIndex((s) => s.late);
+function sideStream(setup) {
+  let h = 2166136261;
+  for (let i = 0; i < FIRST; i++) h = Math.imul(h ^ Math.round(setup[i] * 1000), 16777619);
+  return rng(h >>> 0);
+}
+const anywhere = (s, rand) => s.log ? s.min * Math.pow(s.max / s.min, rand()) : s.min + (s.max - s.min) * rand();
+
 // a random setup: every knob somewhere in its range
 export function randomSetup(rand) {
-  return Float32Array.from(SETUP.map((s) => s.log ? s.min * Math.pow(s.max / s.min, rand()) : s.min + (s.max - s.min) * rand()));
+  const out = new Float32Array(NSETUP);
+  for (let i = 0; i < FIRST; i++) out[i] = anywhere(SETUP[i], rand);
+  const side = sideStream(out);
+  for (let i = FIRST; i < NSETUP; i++) out[i] = anywhere(SETUP[i], side);
+  return out;
 }
 
 // a copy of a setup with small random changes (`amount` = typical change as a share of the knob's range)
 export function mutateSetup(setup, rand, amount = 0.08) {
   const out = Float32Array.from(setup);
+  let r = rand;
   for (let i = 0; i < NSETUP; i++) {
-    if (rand() > 0.5) continue;
+    if (i === FIRST) r = sideStream(out);
+    if (r() > 0.5) continue;
     const s = SETUP[i];
-    if (s.log) out[i] = Math.min(s.max, Math.max(s.min, out[i] * Math.exp(gauss(rand) * amount * Math.log(s.max / s.min))));
-    else out[i] = Math.min(s.max, Math.max(s.min, out[i] + gauss(rand) * amount * (s.max - s.min)));
+    if (s.log) out[i] = Math.min(s.max, Math.max(s.min, out[i] * Math.exp(gauss(r) * amount * Math.log(s.max / s.min))));
+    else out[i] = Math.min(s.max, Math.max(s.min, out[i] + gauss(r) * amount * (s.max - s.min)));
   }
   return out;
 }

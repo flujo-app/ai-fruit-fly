@@ -180,6 +180,7 @@ class Doom {
     const bytes = wad instanceof Uint8Array ? wad : new Uint8Array(wad);
     const p = x.fg_wad_alloc(bytes.length);
     if (!p) throw new Error('Doom: no memory for the WAD');
+    this._wadPtr = p; this._wadLen = bytes.length;
     new Uint8Array(this.memory.buffer, p, bytes.length).set(bytes);
     const rc = x.fg_init();
     if (rc !== 0) throw new Error('Doom: fg_init failed (' + rc + ')');
@@ -192,6 +193,9 @@ class Doom {
     this._full = null;
     this._view = null; this._viewPtr = 0; this._viewLen = 0;
   }
+
+  // The game file's bytes as the engine holds them (to read a level's map from, see level.js). Do not write to them.
+  get wad() { return new Uint8Array(this.memory.buffer, this._wadPtr, this._wadLen); }
 
   // Start a new game on MAPxx (1 = Freedoom MAP01, 2 = arena, 3 = arena with pillars).
   // skill 1..5 as in Doom. The held input is cleared.

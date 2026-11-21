@@ -8,7 +8,9 @@
 // read from the wiring (tools/pack_doom_rig.py), as in the döner pages.
 //
 // HAND-MADE: that a killed monster earns a drop of sugar (three for the last one), and a hit taken or a
-// second of walking against a wall a drop of bitter (the trainer decides what earns a treat); that
+// second of walking against a wall a drop of bitter (the trainer decides what earns a treat); in a real
+// level also a drop of sugar for new ground (every 4 squares of floor the fly had not stood on in this
+// game) and three for pressing the exit switch; that
 // sugar means dopamine from the reward cells and bitter dopamine from the punishment cells (in this
 // model the taste cells' signal does not reach the dopamine cells through the wiring, so the link
 // is made by hand, as in the döner pages); and the sizes below.
@@ -24,6 +26,7 @@ export const LEARN = {
   clear: 3,          // killing the last monster earns this many drops of sugar at once
   stuck: 0.5,        // walking against a wall for a second earns half a drop of bitter
   stuckMove: 16,     // "stuck" = moved less than this many map units in a second while trying to walk
+  groundSquares: 4,  // in a real level: this many new squares of floor (64 x 64 map units each) earn a drop of sugar
 };
 
 export class LearningCentre {

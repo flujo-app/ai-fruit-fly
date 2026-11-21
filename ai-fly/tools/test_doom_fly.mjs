@@ -1,8 +1,11 @@
-// Checks the chain "Doom picture -> fly eyes -> complete brain -> game controller", and the learning centre.
-//   node tools/test_doom_fly.mjs          (a few minutes)
+// Checks the chain "Doom picture -> fly eyes -> complete brain -> game controller", the learning centre,
+// and the real level (its map, the "use" key, the score, the replay).
+//   node tools/test_doom_fly.mjs          (several minutes)
 import { loadDoomFromUrls, DOOM } from '../js/doom/engine.js';
 import { loadRig, loadWiring, makeFly } from '../js/doom/load.js';
-import { Game, Replay, readoutCells, FRAME_W, FRAME_H } from '../js/doom/game.js';
+import { readFileSync } from 'node:fs';
+import { Game, Replay, readoutCells, taskOf, LEVEL, USE_CELLS, FRAME_W, FRAME_H } from '../js/doom/game.js';
+import { readLevel, buildNav } from '../js/doom/level.js';
 import { defaultSetup, randomSetup, mutateSetup, rng, SETUP, KEY, BLUE_STANDARD } from '../js/doom/setup.js';
 import { evolve } from '../js/doom/evolve.js';
 import { LEARN } from '../js/doom/learning.js';
@@ -110,6 +113,65 @@ check(a.kcEver === 0 && a.memory === null, 'with the blue-light signal off, no K
   const changed = evolve(state);
   check(changed.length >= 16 && !changed.includes(best0) && state.setups[best0].every((v, i) => v === keep[i]), `after a round ${changed.length} of 64 desks get a new setup and each lab's best desk keeps its own`);
   check(SETUP[KEY.turn].min < 0, 'the turning knob can be negative (the ball read the other way round)');
+}
+// ---- the real level (Freedoom's first level). It comes last: its game takes over the brain's counters.
+{
+  const { S, BT } = DOOM, st = doom.state;
+  const task = taskOf('level', { seconds: 25 }), lgame = new Game({ doom, brain, eye, rig, task }), nav = lgame.nav;
+  const fromFile = buildNav(readLevel(readFileSync(new URL('../data/doom/flygym.wad', import.meta.url)), 1), 3);
+  check(nav.total === fromFile.total && nav.total > 4000 && nav.total < 5200 && nav.doors.length === 3 && nav.monsters === 18,
+    `the level's map is read from the game file: the way from the start to the exit switch is ${nav.total.toFixed(0)} map units long and leads through ${nav.doors.length} doors (after ${nav.doors.map((d) => Math.round(100 * d.way) + '%').join(', ')} of the way); ${nav.monsters} monsters, ${nav.items} items, ${nav.groundTotal} squares of floor`);
+  check(nav.way(nav.level.start.x, nav.level.start.y) === 0 && nav.way(nav.exit.x, nav.exit.y) > 0.99 && nav.doors.every((d, k) => d.way > 0 && d.way < 1 && (!k || d.way > nav.doors[k - 1].way)), 'the way to the exit counts from 0 at the start to 1 at the exit switch, and the doors come in order');
+  check(USE_CELLS.every((nm) => lgame.read.span[nm][1] === 1), `the "use" key's cells exist: the landing cells ${USE_CELLS.join(', ')}`);
+
+  // a hand-written walker with the fly's keys (turn, walk, trigger, "use"): it follows the worked-out route,
+  // holds the trigger and taps "use". It shows that the level can be finished with these keys in the time given.
+  const walker = (seed) => {
+    lgame.start(defaultSetup(), seed);
+    const route = nav.route;
+    let at = 0;
+    while (!lgame.over) {
+      const x = st[S.X] / 65536, y = st[S.Y] / 65536, a = (st[S.ANGLE] >>> 0) / 4294967296 * 360;
+      while (at < route.length - 1 && Math.hypot(route[at][0] - x, route[at][1] - y) < 40) at++;
+      const last = at >= route.length - 1 && Math.hypot(route[at][0] - x, route[at][1] - y) < 24;      // at the switch: face it
+      let d = (last ? nav.exit.faceDeg : Math.atan2(route[at][1] - y, route[at][0] - x) * 180 / Math.PI) - a; d = ((d % 360) + 540) % 360 - 180;
+      lgame.act(last ? 0 : Math.abs(d) < 40 ? 50 : 0, Math.max(-2800, Math.min(2800, Math.round(d * 182 * 0.35))), BT.FIRE | (lgame.tic % 8 < 4 ? BT.USE : 0));
+    }
+    return lgame.result();
+  };
+  const w = walker(2);
+  check(w.level.exited && w.perfect && w.score === 8 && w.level.way === 1 && w.level.doors === 3 && st[S.EXITED] === 1,
+    `a hand-written route follower with the fly's keys finishes the level: exit switch pressed after ${(w.tics / 35).toFixed(1)} s, score ${w.score} of 8, through ${w.level.doors} doors, ${w.level.squares} squares of floor, health ${w.health}`);
+  const wEnd = [...st.slice(1, 24)].join(',');
+  const rp = new Replay(doom, task).start(w); while (rp.step());
+  check([...st.slice(1, 24)].join(',') === wEnd && st[S.EXITED] === 1, 'replaying its recorded input ends at the exit again');
+  check(w.level.path.length >= 2 * Math.floor(w.tics / 5) && w.level.path[0] === nav.level.start.x && w.level.path[1] === nav.level.start.y, `its path is recorded for the small map (${w.level.path.length / 2} points)`);
+
+  // the fly itself, standard desk: a still room gives its eyes nothing, and this brain model has no activity of its own
+  const fly = (setup, seed, n) => { lgame.start(setup, seed, n); while (lgame.step()); return lgame.result(); };
+  const still = fly(defaultSetup(), 3, 0);
+  check(still.level.way === 0 && still.shots === 0 && still.level.uses === 0 && still.tics === 25 * 35, `standard desk: nothing moves in the level's first room, so nothing reaches the fly's brain and it stands still for the whole game (score ${still.score.toFixed(2)})`);
+
+  // a desk that gets the fly going (the 4th random desk of `node tools/train_doom.mjs level flies=16 seed=5`): its ball
+  // is trimmed, so the view drifts, the eyes get movement and the brain answers. Its own landing cells open the first door.
+  const rand = rng(5); let going;
+  for (let k = 0; k < 4; k++) going = randomSetup(rand);
+  going[KEY.gBlue] = 0;
+  const g = fly(going, 3, 7);
+  const L = g.level, ground = Math.min(1, L.squares / (LEVEL.groundFull * nav.groundTotal));
+  check(L.way > 0.2 && L.doors >= 1 && L.uses >= 1 && !L.exited, `a desk with a trimmed ball: the fly walks ${(100 * L.way).toFixed(0)}% of the way to the exit in ${(g.tics / 35).toFixed(0)} s and gets through ${L.doors} door(s); its landing cells pressed "use" ${L.uses} times (score ${g.score.toFixed(2)} of 8)`);
+  check(Math.abs(g.score - (LEVEL.wayPoints * L.way + LEVEL.groundPoints * ground + LEVEL.killPoints * g.kills / nav.monsters)) < 1e-9 && g.score < 8, `the score adds up: ${LEVEL.wayPoints} x ${L.way.toFixed(3)} of the way + ${LEVEL.groundPoints} x ${ground.toFixed(3)} for new ground (${L.squares} squares) + ${LEVEL.killPoints} x ${g.kills}/${nav.monsters} monsters`);
+  const gEnd = [...st.slice(1, 24)].join(',');
+  const rp2 = new Replay(doom, task).start(g); while (rp2.step());
+  check([...st.slice(1, 24)].join(',') === gEnd, 'replaying the fly\'s recorded input (no brain) ends in the same state, doors included');
+
+  // with the learning centre on: sugar for new ground
+  const blue = Float32Array.from(going); blue[KEY.gBlue] = BLUE_STANDARD;
+  lgame.learn = true;
+  const ln = fly(blue, 3, 7);
+  check(ln.memory && ln.sugar === Math.floor((ln.level.squares - 1) / LEARN.groundSquares) + ln.kills + (ln.level.exited ? LEARN.clear : 0) && ln.sugar > 0,
+    `learning on in the level: ${ln.sugar} drops of sugar for ${ln.level.squares} squares of new ground (one for every ${LEARN.groundSquares}) and ${ln.kills} kills, ${ln.bitter} drops of bitter (hits and being stuck: ${ln.stuck} times stuck); ${(100 * ln.level.way).toFixed(0)}% of the way`);
+  lgame.learn = false;
 }
 console.log(failed ? `\n${failed} check(s) FAILED` : '\nall checks passed');
 process.exit(failed ? 1 : 0);

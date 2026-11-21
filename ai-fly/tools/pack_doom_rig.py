@@ -201,6 +201,11 @@ sub = ann.cell_sub_class.astype(str).to_numpy()
 cc = ann.cell_class.astype(str).to_numpy()
 groups["bitter"] = [int(i) for i in np.flatnonzero((sub == "bitter") & (cc == "gustatory"))]
 controller_groups = list(groups)       # everything so far is needed to play; the rest is only looked at
+# the "use" key of the real level (js/doom/game.js): the landing cells DNp07 and DNp10 (Ache et al. 2019).
+# They are read in the level only. They are not put into the fast mode's reduced circuit, which stays as it was.
+for name in ("DNp07", "DNp10"):
+    for sd, s_ in (("left", "L"), ("right", "R")):
+        groups[f"{name}_{s_}"] = [int(i) for i in np.flatnonzero((ct == name) & (side == sd) & (sc == "descending"))]
 # cells that are only looked at (tools/doom_experiments.mjs): motion and looming cells of the eye,
 # the learning centre's Kenyon cells, the eye cells that project to them, and the dopamine cells
 for name in ("HSN", "HSE", "HSS", "H2", "LC4", "LPLC2", "LC11"):

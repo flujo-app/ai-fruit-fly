@@ -2,9 +2,12 @@
 //   node tools/doom_experiments.mjs
 // The pictures go through the same eyes as Doom does (js/doom/eye.js) into all 138,639 neurons.
 // Prints the cells that biologists know well (do they behave like in a real fly?), the output cells
-// the game controller reads, and how much of the learning centre the screen reaches.
+// the game controller reads, and how much of the learning centre the screen reaches. At the end the
+// brain is carried through Doom's real first level, to see what its landing cells (the "use" key) do
+// when a wall or a door comes close.
 import { loadRig, loadWiring, makeFly } from '../js/doom/load.js';
-import { FRAME_W as W, FRAME_H as H } from '../js/doom/game.js';
+import { FRAME_W as W, FRAME_H as H, USE_CELLS } from '../js/doom/game.js';
+import { loadDoomFromUrls, DOOM } from '../js/doom/engine.js';
 
 const rig = await loadRig();
 const { brain, eye } = makeFly(rig, await loadWiring(false), false);
@@ -12,7 +15,7 @@ eye.setPalette(Uint8Array.from({ length: 768 }, (_, i) => Math.floor(i / 3)));  
 const G = rig.groups;
 const names = ['HSN_L', 'HSN_R', 'HSE_L', 'HSE_R', 'HSS_L', 'HSS_R', 'H2_L', 'H2_R', 'LC4_L', 'LC4_R', 'LPLC2_L', 'LPLC2_R', 'LC11_L', 'LC11_R',
   'DNp01_L', 'DNp01_R', 'DNp02_L', 'DNp02_R', 'DNp04_L', 'DNp04_R', 'DNa01_L', 'DNa01_R', 'DNa02_L', 'DNa02_R', 'DNg100_L', 'DNg100_R', 'DNg97_L', 'DNg97_R', 'MDN_L', 'MDN_R', 'MN9_L', 'MN9_R',
-  'KC', 'PAM', 'PPL1', 'eyeToKC'];
+  'KC', 'PAM', 'PPL1', 'eyeToKC', ...USE_CELLS];
 const span = {}; const idx = [];
 for (const nm of names) { span[nm] = [idx.length, G[nm].length]; idx.push(...G[nm]); }
 const count = brain.watch(Int32Array.from(idx));
@@ -81,6 +84,41 @@ console.log(`\nKenyon cells: bright screen ${bright.kcSet.size}, left half brigh
 const say = (o) => ['DNa01', 'DNa02', 'DNg100', 'DNg97'].map((d) => `${d} ${o[d + '_L'].toFixed(0)}|${o[d + '_R'].toFixed(0)}`).join('  ');
 console.log(`steering and walking cells with the bright screen: ${say(bright)}`);
 console.log(`                 the same, Kenyon cells switched off: ${say(off)}`);
-const ok = r.HSE_R > 50 && r.HSE_L < 5 && r.H2_L > 50 && r.H2_R < 5;
+// ---- the landing cells in the real level. The fly does not steer here: the player is put somewhere in
+// Freedoom's first level, stands still for half a second and is then walked straight ahead for 1.5 seconds.
+console.log('\nThe "use" key of the real level: what do the landing cells (DNp07, DNp10) do when a wall or a door comes close?');
+const doom = await loadDoomFromUrls();
+function carried(label, x, y, deg, speed) {
+  doom.newGame({ skill: 3, map: 1, seed: 1 });
+  doom.setPlayer(x, y, deg);
+  brain.reset(); brain.seed(11); brain.silenced.fill(0);
+  eye.o.gBlue = 0; eye.setScreen(120, W, H);
+  let pal = -1;
+  const sum = (list) => { let s = 0; for (const nm of list) { const [o, n] = span[nm]; for (let k = 0; k < n; k++) s += count[o + k]; } return s; };
+  const out = { still: 0, early: 0, late: 0, fibre: 0 };
+  for (let tic = 0; tic < 70; tic++) {
+    const frame = doom.render(W, H);
+    if (doom.state[DOOM.S.PALETTE] !== pal) { pal = doom.state[DOOM.S.PALETTE]; eye.setPalette(doom.palette(pal)); }
+    const steps = tic % 7 === 6 ? 58 : 57;
+    count.fill(0);
+    brain.drive(eye.cellIdx, eye.see(frame), eye.N, steps); brain.run(steps);
+    const landing = sum(USE_CELLS);
+    if (tic < 18) out.still += landing; else if (tic < 44) out.early += landing; else out.late += landing;
+    if (tic >= 18) out.fibre += sum(['DNp01_L', 'DNp01_R']);
+    doom.setCmd(tic >= 18 ? speed : 0, 0, 0, 0); doom.tick(1);
+  }
+  console.log(`   ${label.padEnd(58)} landing cells: ${String(out.still).padStart(2)} impulses standing still, ${String(out.early).padStart(2)} in the first 0.75 s of walking, ${String(out.late).padStart(2)} in the next 0.75 s; giant fibre ${out.fibre} while walking`);
+  return out;
+}
+const corridor = carried('walking along the first corridor, nothing close ahead', -150, -192, 0, 25);
+const wall = carried('walking up to a plain wall, 100 map units away', -60, -192, 180, 25);
+const door = carried('walking up to the first door, 300 units away', 400, -160, 0, 25);
+const doorFast = carried('running up to the same door', 400, -160, 0, 50);
+const stand = carried('standing 40 units in front of the door (not walking)', 660, -160, 0, 0);
+eye.setPalette(Uint8Array.from({ length: 768 }, (_, i) => Math.floor(i / 3)));
+const landingOk = corridor.early + corridor.late + stand.early + stand.late <= 2 && wall.early + wall.late >= 10 && door.early + door.late >= 10;
+console.log(`${landingOk ? 'ok  ' : 'FAIL'} the landing cells stay silent in the open corridor and in front of a still picture, and fire when a wall or a door comes close`);
+
+const ok = landingOk && r.HSE_R > 50 && r.HSE_L < 5 && r.H2_L > 50 && r.H2_R < 5;
 console.log(`\n${ok ? 'ok  ' : 'FAIL'} world turning right: right HS cell ${r.HSE_R.toFixed(0)}/s, left HS cell ${r.HSE_L.toFixed(0)}/s; left H2 cell ${r.H2_L.toFixed(0)}/s, right H2 cell ${r.H2_R.toFixed(0)}/s (as in a real fly)`);
 process.exit(ok ? 0 : 1);

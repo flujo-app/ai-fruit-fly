@@ -1,6 +1,7 @@
 // Flies play Doom without a page, for experiments and checks.
-//   node tools/play_doom.mjs [games=4] [seed=1] [fast] [png] [knob=value ...]
-// Each game: the complete brain (or the reduced circuit with `fast`) plays the arena once.
+//   node tools/play_doom.mjs [level] [games=4] [seed=1] [seconds=..] [fast] [png] [knob=value ...]
+// Each game: the complete brain (or the reduced circuit with `fast`) plays the arena once, or with
+// `level` the real level (Freedoom's first level).
 // Knobs are the desk setup (see js/doom/setup.js), e.g. turn=-3 trigger=4 screen=140.
 // `random` plays every game with a different random setup; `png` saves pictures of game 1
 // (the fly's view and the normal screen) into tools/.out/.
@@ -10,7 +11,7 @@ import { dirname, join } from 'node:path';
 import zlib from 'node:zlib';
 import { loadDoomFromUrls, DOOM, toRGBA } from '../js/doom/engine.js';
 import { loadRig, loadWiring, makeFly } from '../js/doom/load.js';
-import { Game, Replay, FRAME_W, FRAME_H } from '../js/doom/game.js';
+import { Game, Replay, taskOf, FRAME_W, FRAME_H } from '../js/doom/game.js';
 import { defaultSetup, randomSetup, SETUP, KEY, rng, describeSetup } from '../js/doom/setup.js';
 
 const args = process.argv.slice(2);
@@ -34,21 +35,24 @@ const t0 = performance.now();
 const [doom, rig, wiring] = await Promise.all([loadDoomFromUrls(), loadRig(), loadWiring(fast)]);
 const { brain, eye, remap, neurons, connections } = makeFly(rig, wiring, fast);
 console.log(`${fast ? 'FAST MODE (reduced circuit)' : 'complete brain'}: ${neurons.toLocaleString()} neurons, ${connections.toLocaleString()} connections; ${eye.N.toLocaleString()} eye cells are driven; loaded in ${((performance.now() - t0) / 1000).toFixed(1)} s`);
-const game = new Game({ doom, brain, eye, rig, remap });
+const task = taskOf(flag('level') ? 'level' : 'arena');
+if (!Number.isNaN(num('seconds', NaN))) task.seconds = num('seconds', 0);
+const game = new Game({ doom, brain, eye, rig, remap, task });
 const base = defaultSetup();
 for (const s of SETUP) { const v = num(s.key, NaN); if (!Number.isNaN(v)) base[KEY[s.key]] = v; }
 const rand = rng(num('setupseed', 99));
 let total = 0;
 for (let g = 0; g < games; g++) {
   const setup = flag('random') ? randomSetup(rand) : base;
+  if (flag('random')) setup[KEY.gBlue] = num('gBlue', 0);      // the learning centre's blue light stays off unless asked for
   game.start(setup, seed0 + g);
   brain.spikesTotal = 0; brain.eventsTotal = 0;
   const w0 = performance.now();
-  const acc = { left: 0, right: 0, walk: 0, back: 0, jump: 0, fire: 0, absTurn: 0, driven: 0 };
+  const acc = { left: 0, right: 0, walk: 0, back: 0, jump: 0, fire: 0, absTurn: 0, driven: 0, reach: 0, use: 0 };
   let shots = 0;
   while (game.step()) {
     const r = game.rates;
-    acc.left += r.left; acc.right += r.right; acc.walk += r.walk; acc.back += r.back; acc.jump += r.jump; acc.fire += r.fire ? 1 : 0; acc.absTurn += Math.abs(r.turn);
+    acc.left += r.left; acc.right += r.right; acc.walk += r.walk; acc.back += r.back; acc.jump += r.jump; acc.fire += r.fire ? 1 : 0; acc.absTurn += Math.abs(r.turn); acc.reach += r.reach; acc.use += r.use ? 1 : 0;
     let d = 0; for (let i = 0; i < eye.N; i++) if (eye.rate[i] > 1) d++; acc.driven += d;
     if (flag('png') && g === 0 && (game.tic % 105 === 5)) {
       mkdirSync(out, { recursive: true });
@@ -72,11 +76,12 @@ for (let g = 0; g < games; g++) {
   total += res.score;
   console.log(`game ${g + 1} (seed ${seed0 + g}): score ${res.score.toFixed(2)} of 8, kills ${res.kills}, shots ${res.shots}, hits ${res.hits}, health ${res.health}, ${(n / 35).toFixed(1)} s (${res.why}); brain ${brain.spikesTotal.toLocaleString()} impulses, ${(n / 35 * 1000 / wall).toFixed(2)}x real time`);
   console.log(`   mean per tic: steering L ${(acc.left / n).toFixed(0)} | R ${(acc.right / n).toFixed(0)} Hz, walk ${(acc.walk / n).toFixed(0)}, back ${(acc.back / n).toFixed(0)}, jump ${(acc.jump / n).toFixed(0)} Hz, trigger held ${(100 * acc.fire / n).toFixed(0)}% of the time, turning ${(acc.absTurn / n / (65536 / 360 / 35)).toFixed(0)} deg/s, eye cells driven ${(acc.driven / n).toFixed(0)}`);
+  if (res.level) console.log(`   the level: ${(100 * res.level.way).toFixed(0)}% of the way to the exit, through ${res.level.doors} door(s), ${res.level.exited ? 'FOUND THE EXIT, ' : ''}${res.level.squares} squares of floor, ${res.level.items} items; landing cells ${(acc.reach / n).toFixed(1)} Hz, "use" pressed ${res.level.uses} times (down ${(100 * acc.use / n).toFixed(0)}% of the time)`);
   if (flag('random')) console.log('   setup: ' + describeSetup(setup).map((d) => `${d.key}=${d.shown}`).join(' '));
   if (flag('replaycheck')) {
     // play the recorded input again in a fresh game and compare the end
     const end = [...doom.state.slice(1, 17)].join(',');
-    const rp = new Replay(doom).start(res); while (rp.step());
+    const rp = new Replay(doom, task).start(res); while (rp.step());
     console.log('   replay from the recorded input ends identically:', [...doom.state.slice(1, 17)].join(',') === end);
   }
 }
