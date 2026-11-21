@@ -20,6 +20,13 @@ neuron_annotations.tsv.   Outputs (in ../data/doom): rig.bin + rig.json, circuit
 
 3. The read-out cells (steering, walking, backing up, jumping) and the taste cells.
 
+3b. The learning centre's one well-known line from the eye: the aMe12 cells. They are the biggest eye
+   input of the "visual" Kenyon cells and are excited by the pale kind of the colour photoreceptors
+   R7/R8, which see ultraviolet and blue (Ganguly et al. 2024). For each aMe12 cell the facets of
+   the R8 cells that contact it are stored, so that the eye can hand it the blue light of exactly
+   those spots. Also: the Kenyon cells that get input from the eyes, and the learning centre's output
+   cells with their dopamine zone (as in tools/pack_mushroom_body.py).
+
 4. circuit.bin: for the optional fast mode (?fast) only. The cells that lie on short paths from the
    eye cells to the read-out cells, with all the connections between them. The default uses the
    complete brain (data/connectome.bin).
@@ -206,6 +213,49 @@ kc_set = np.zeros(n, bool); kc_set[groups["KC"]] = True
 to_kc = np.zeros(n); np.add.at(to_kc, pre[kc_set[post]], np.abs(w[kc_set[post]]))
 groups["eyeToKC"] = [int(i) for i in np.flatnonzero((to_kc >= 50) & np.isin(sc, ["visual_projection", "optic"]))]
 
+# ---------- 3b. the learning centre ----------
+is_kc = cc == "Kenyon_Cell"
+is_mbon = cc == "MBON"
+is_dan = cc == "DAN"
+eye_cell = np.isin(sc, ["visual_projection", "optic"])
+from_eye = np.zeros(n)
+m_ = eye_cell[pre] & is_kc[post]
+np.add.at(from_eye, post[m_], np.abs(w[m_]))
+groups["visualKC"] = [int(i) for i in np.flatnonzero(is_kc & (from_eye >= 5))]
+# each output cell's dopamine zone: more of its dopamine input from reward cells (PAM) -> sugar weakens its
+# Kenyon-cell inputs ("avoid" cells); more from punishment cells (PPL1 and the like) -> bitter does ("approach" cells)
+pam_in = np.zeros(n); ppl_in = np.zeros(n)
+m_ = is_dan[pre] & is_mbon[post]
+pam_pre = np.char.startswith(ct[pre[m_]].astype(str), "PAM")
+np.add.at(pam_in, post[m_][pam_pre], np.abs(w[m_][pam_pre]))
+np.add.at(ppl_in, post[m_][~pam_pre], np.abs(w[m_][~pam_pre]))
+groups["MBON_sugar"] = [int(i) for i in np.flatnonzero(is_mbon & (pam_in > ppl_in))]
+groups["MBON_bitter"] = [int(i) for i in np.flatnonzero(is_mbon & (ppl_in > pam_in))]
+groups["MBON"] = [int(i) for i in np.flatnonzero(is_mbon)]
+mbon_names = {int(i): f"{ct[i]}_{side[i][0].upper()}" for i in np.flatnonzero(is_mbon)}
+
+# the blue-light cells: aMe12, and the facets of the R8 cells that contact each of them
+blue_cells = np.flatnonzero(ct == "aMe12")
+groups["aMe12"] = [int(i) for i in blue_cells]
+r8 = ct == "R8"
+m_ = r8[pre] & (ct[post] == "Mi1")
+r8_home = pd.DataFrame({"r8": pre[m_], "mi1": post[m_], "w": np.abs(w[m_])}).sort_values("w", ascending=False).drop_duplicates("r8").set_index("r8").mi1
+col_of_mi1 = np.full(n, -1); col_of_mi1[col_idx] = np.arange(C)
+blue_start, blue_col, blue_w = [0], [], []
+for b in blue_cells:
+    m_ = (post == b) & r8[pre]
+    acc = {}
+    for cell, syn in zip(pre[m_], np.abs(w[m_])):
+        if cell in r8_home.index:
+            c = int(col_of_mi1[r8_home[cell]])            # the column of the Mi1 cell this R8 cell is wired to
+        elif not np.isnan(az[cell]):
+            c = nearest_col(0 if side[cell] == "left" else 1, az[cell], el[cell], 8)
+        else:
+            c = -1
+        if c >= 0:
+            acc[c] = acc.get(c, 0) + float(syn)
+    blue_col += list(acc.keys()); blue_w += list(acc.values()); blue_start.append(len(blue_col))
+
 # ---------- 4. the fast mode's circuit ----------
 on_screen = (np.abs(az[d_idx]) < 80) & (np.abs(el[d_idx]) < 60)
 x = np.zeros(n); x[d_idx[on_screen]] = 1
@@ -245,6 +295,8 @@ arrays = {
     "colSide": col_side, "colAz": col_az, "colEl": col_el, "colNb": nb.ravel(),
     "drivenIdx": d_idx, "drivenCol": d_col, "drivenKind": d_kind,
     "circuitGlobal": kept.astype(np.uint32),
+    "blueIdx": blue_cells.astype(np.uint32), "blueStart": np.array(blue_start, np.uint32),
+    "blueCol": np.array(blue_col, np.uint16), "blueW": np.array(blue_w, np.float32),
 }
 layout, blob = {}, bytearray()
 for name, arr in arrays.items():
@@ -262,9 +314,12 @@ meta = {
     "counts": {"driven": int(len(d_idx)), "eyeNeurons": int(classes.get("optic", 0) + classes.get("visual_projection", 0) + classes.get("visual_centrifugal", 0) + int(((sc == "sensory") & (ann.cell_class.astype(str).to_numpy() == "visual")).sum())),
                "descending": int(classes.get("descending", 0))},
     "circuit": {"neurons": int(len(kept)), "connections": int(len(edges))},
+    "mbonNames": mbon_names,
 }
 (OUT / "rig.json").write_text(json.dumps(meta))
 print(f"columns {C}; driven cells {len(d_idx)} ({ {k: int(v) for k, v in pd.Series(np.array(KINDS)[d_kind]).value_counts().items()} })")
 print("read-outs:", {k: len(v) for k, v in groups.items()})
+print(f"learning centre: {len(groups['visualKC'])} Kenyon cells with input from the eyes; output cells: {len(groups['MBON_sugar'])} weakened by sugar, {len(groups['MBON_bitter'])} by bitter; "
+      f"{len(blue_cells)} blue-light cells with {[blue_start[k + 1] - blue_start[k] for k in range(len(blue_cells))]} facets")
 print(f"fast-mode circuit: {len(kept):,} neurons, {len(edges):,} connections")
 print({p_.name: p_.stat().st_size for p_ in OUT.iterdir() if p_.suffix in ('.bin', '.json')})

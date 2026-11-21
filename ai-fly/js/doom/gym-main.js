@@ -3,6 +3,8 @@
 //   ?flies=1024    how many desks (default 1,024)      ?labs=8   how many brains run at once (default: one per core, up to 8)
 //   ?seconds=30    how long a game lasts at most       ?autostart   start at once
 //   ?resume        continue the saved run (saved to the local server after every few games)
+//   ?learn         switch the learning centre on: blue light on the screen reaches it, a kill earns sugar and a hit
+//                  bitter, and every fly keeps what it learns from game to game (see js/doom/learning.js)
 import { DoomRunner } from './runner.js';
 import { loadDoom, DOOM } from './engine.js';
 import { parseRig } from './eye.js';
@@ -17,7 +19,8 @@ const FAST = P.has('fast');
 const LABS = Math.max(1, Math.min(16, Number(P.get('labs')) || Math.min(8, navigator.hardwareConcurrency || 4)));
 const PER_LAB = Math.max(1, Math.round((Number(P.get('flies')) || 1024) / LABS));
 const SECONDS = Number(P.get('seconds')) || ARENA.seconds;
-const STATE_URL = `/state/doom-${FAST ? 'fast' : 'full'}-${LABS}x${PER_LAB}`;
+const LEARNING = P.has('learn') && !FAST;
+const STATE_URL = `/state/doom-${FAST ? 'fast' : LEARNING ? 'learn' : 'full'}-${LABS}x${PER_LAB}`;
 const nf = (x) => Math.round(x).toLocaleString('en-US');
 
 let screens = null, rig = null, dots = null, replayDoom = null, replay = null;
@@ -26,7 +29,7 @@ let lastFrames = new Array(LABS).fill(null);
 const gameLog = [];                           // every game's score, for the chart
 
 const runner = new DoomRunner({
-  labs: LABS, perLab: PER_LAB, fast: FAST, seconds: SECONDS,
+  labs: LABS, perLab: PER_LAB, fast: FAST, learn: LEARNING, seconds: SECONDS,
   onStatus: (t) => { if (t) $('btn-run').textContent = t[0].toUpperCase() + t.slice(1) + '…'; },
   onFrame, onGame, onRound,
 });
@@ -109,13 +112,20 @@ function labBest() {
 const METERS = [['left', 'steer left', 60, '#5fd4ff'], ['right', 'steer right', 60, '#5fd4ff'], ['walk', 'walk', 150, '#45d483'], ['back', 'back up', 60, '#a98bff'], ['jump', 'jump neuron', 150, '#ffb547']];
 function buildMeters() {
   $('meters').innerHTML = METERS.map(([k, name, , c]) => `<div class="meter" id="m-${k}"><span>${name}</span><i><b style="--c:${c}"></b></i><span>0</span></div>`).join('')
-    + `<div class="meter" id="m-fire"><span>trigger</span><i><b style="--c:#ff5d62"></b></i><span>–</span></div>`;
+    + `<div class="meter" id="m-fire"><span>trigger</span><i><b style="--c:#ff5d62"></b></i><span>–</span></div>`
+    + (LEARNING ? `<div class="meter" id="m-kc"><span>learning centre</span><i><b style="--c:#a98bff"></b></i><span>0</span></div><div class="meter" id="m-drop"><span>taste</span><i><b style="--c:#45d483"></b></i><span>–</span></div>` : '');
 }
 function drawMeters(r) {
   for (const [k, , max] of METERS) {
     const el = $(`m-${k}`); el.querySelector('b').style.width = `${Math.min(100, 100 * r[k] / max)}%`; el.lastElementChild.textContent = `${Math.round(r[k])}/s`;
   }
   const f = $('m-fire'); f.classList.toggle('on', !!r.fire); f.querySelector('b').style.width = r.fire ? '100%' : '0'; f.lastElementChild.textContent = r.fire ? 'pulled' : '–';
+  if (LEARNING) {
+    // how many of the Kenyon cells that get input from the eyes fired in the last 1/35 s, and a drop on the tongue
+    const k = $('m-kc'); k.querySelector('b').style.width = `${Math.min(100, 100 * r.kc / 30)}%`; k.lastElementChild.textContent = `${r.kc} cells`;
+    const d = $('m-drop'), b = d.querySelector('b'); b.style.width = r.sugar || r.bitter ? '100%' : '0'; b.style.background = r.sugar ? '#45d483' : '#ff5d62';
+    d.lastElementChild.textContent = r.sugar ? 'sugar' : r.bitter ? 'bitter' : '–';
+  }
 }
 
 // ---------------------------------------------------------------- events from the labs
@@ -213,7 +223,7 @@ function renderSetup() {
   const idx = selected !== null ? selected : runner.best ? runner.best.lab * PER_LAB + runner.best.desk : -1;
   const setup = selected !== null ? runner.setups[selected] : runner.best ? runner.best.setup : null;
   if (!setup) { $('setup').innerHTML = '<span class="muted">no game yet</span>'; return; }
-  $('setup-note').textContent = selected !== null ? `lab ${Math.floor(idx / PER_LAB) + 1}, desk ${idx % PER_LAB + 1}` : 'the fly\'s brain is never changed; the gym tunes the desk';
+  $('setup-note').textContent = selected !== null ? `lab ${Math.floor(idx / PER_LAB) + 1}, desk ${idx % PER_LAB + 1}` : LEARNING ? 'the gym tunes the desk; each fly\'s learning centre changes by itself' : 'the fly\'s brain is never changed; the gym tunes the desk';
   $('setup').innerHTML = describeSetup(setup).map((k) => {
     const pos = (v) => `${Math.max(0, Math.min(100, 100 * (v - k.min) / (k.max - k.min)))}%`;
     return `<div class="knob" title="${k.text}"><span>${k.name}</span><div class="track"><u style="left:${pos(k.def)}"></u><b style="left:${pos(k.value)}"></b></div><span>${k.shown}</span></div>`;
@@ -277,7 +287,7 @@ $('wall').addEventListener('mousemove', (e) => {
   const i = deskAt(e), tip = $('tip');
   if (i < 0) { tip.classList.add('hidden'); return; }
   const l = runner.last[i], card = $('wall').parentElement.getBoundingClientRect();
-  tip.textContent = `Lab ${Math.floor(i / PER_LAB) + 1} · desk ${i % PER_LAB + 1} · ` + (l ? `${l.score.toFixed(2)} of 8 · ${l.kills} killed · ${l.dead ? 'died' : 'alive'} after ${l.seconds.toFixed(0)} s${runner.records[i] ? ' · click to replay' : ''}` : 'has not played yet');
+  tip.textContent = `Lab ${Math.floor(i / PER_LAB) + 1} · desk ${i % PER_LAB + 1} · ` + (l ? `${l.score.toFixed(2)} of 8 · ${l.kills} killed · ${l.dead ? 'died' : 'alive'} after ${l.seconds.toFixed(0)} s${LEARNING && l.kcEver !== undefined ? ` · ${l.kcEver} learning cells used, ${l.sugar} sugar, ${l.bitter} bitter` : ''}${runner.records[i] ? ' · click to replay' : ''}` : 'has not played yet');
   tip.style.left = `${e.clientX - card.left + 14}px`; tip.style.top = `${e.clientY - card.top + 14}px`;
   tip.classList.remove('hidden');
 });
@@ -303,7 +313,8 @@ function frame(t) {
   $('mode').classList.toggle('fast', FAST);
   $('mode').innerHTML = FAST
     ? `FAST MODE: a reduced brain of ${nf(info.neurons)} of the 138,639 neurons (the cells between the eyes and the output cells). <a href="${location.pathname}">Switch to the complete brain</a>`
-    : `Complete brain: ${nf(info.neurons)} neurons and ${nf(info.connections)} connections for every fly, nothing left out. ${nf(info.driven)} eye cells receive the picture. ${LABS} flies play at once, ${nf(runner.desks)} desks take turns.`;
+    : `Complete brain: ${nf(info.neurons)} neurons and ${nf(info.connections)} connections for every fly, nothing left out. ${nf(info.driven)} eye cells receive the picture. ${LABS} flies play at once, ${nf(runner.desks)} desks take turns.`
+      + (LEARNING ? ' <b>Learning centre on:</b> blue light on the screen reaches it, a kill earns a drop of sugar and a hit a drop of bitter, and every fly keeps what it learns.' : ` <a href="${location.pathname}?learn${location.search ? '&' + location.search.slice(1) : ''}">Switch the learning centre on</a>`);
   $('live-title').textContent = `Playing right now: ${LABS} flies`;
   if (P.has('resume') && await runner.load(STATE_URL)) {
     for (const l of runner.last) if (l) gameLog.push(l.score);

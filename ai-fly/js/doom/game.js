@@ -6,6 +6,7 @@
 // The same seed and setup always give the same game, so a game can be replayed from its recorded input.
 import { DOOM } from './engine.js';
 import { KEY, rng } from './setup.js';
+import { LearningCentre, LEARN } from './learning.js';
 
 const { S, MT, WP, BT } = DOOM;
 
@@ -41,10 +42,23 @@ export function readoutCells(rig, remap = null) {
 }
 
 export class Game {
-  constructor({ doom, brain, eye, rig, remap = null, task = ARENA }) {
+  // learn: the learning centre may change (sugar for a kill, bitter for a hit taken), see learning.js
+  constructor({ doom, brain, eye, rig, remap = null, task = ARENA, learn = false }) {
     this.doom = doom; this.brain = brain; this.eye = eye; this.task = task;
     this.read = readoutCells(rig, remap);
-    this.count = brain.watch(this.read.idx);
+    // also counted, after the output cells: the Kenyon cells that get input from the eyes, then all the others
+    this.lc = new LearningCentre(brain, rig, remap);
+    this.learn = learn && this.lc.ok;
+    const seen = new Set(this.lc.kc), others = this.lc.ok ? rig.groups.KC.filter((i) => !seen.has(i)) : [];
+    this.kcFrom = this.read.idx.length; this.kcOtherFrom = this.kcFrom + this.lc.kc.length; this.kcEnd = this.kcOtherFrom + others.length;
+    const watch = new Int32Array(this.kcEnd);
+    watch.set(this.read.idx); watch.set(this.lc.kc, this.kcFrom); watch.set(others, this.kcOtherFrom);
+    this.count = brain.watch(watch);
+    // everything that is driven from outside: the eye cells, then the sugar and the bitter taste cells
+    this.tasteFrom = eye.N; this.bitterFrom = eye.N + this.lc.sugarCells.length;
+    this.dIdx = new Int32Array(this.bitterFrom + this.lc.bitterCells.length);
+    this.dIdx.set(eye.cellIdx); this.dIdx.set(this.lc.sugarCells, this.tasteFrom); this.dIdx.set(this.lc.bitterCells, this.bitterFrom);
+    this.dRate = new Float32Array(this.dIdx.length);
     this.maxTics = task.seconds * 35;
     this.cmds = new Int16Array(this.maxTics * 3);        // per tic: forward, turn, buttons
     this.rates = {};                                      // last tic's read-outs in impulses per second, for display
@@ -55,14 +69,15 @@ export class Game {
   _n(name) { const [o, n] = this.read.span[name]; let s = 0; for (let k = 0; k < n; k++) s += this.count[o + k]; return s; }
 
   // start a game: `setup` is the desk's setup (see setup.js), `seed` decides where the monsters appear,
-  // and `fly` (the desk's number) gives each fly its own run of chance in when exactly its eye cells fire
-  start(setup, seed, fly = 0) {
+  // `fly` (the desk's number) gives each fly its own run of chance in when exactly its eye cells fire,
+  // and `memory` is what this fly's learning centre has learnt so far (null = nothing)
+  start(setup, seed, fly = 0, memory = null) {
     const { doom, brain, eye, task } = this;
     this.setup = setup; this.seed = seed;
     doom.newGame({ skill: task.skill, map: task.map, seed });
     doom.give(task.weapon, task.ammo, task.health);
     brain.reset(); brain.seed((Math.imul(seed + 1, 2654435761) ^ Math.imul(fly + 1, 40503)) >>> 0);
-    eye.o.gMotion = setup[KEY.gMotion]; eye.o.gContrast = setup[KEY.gContrast]; eye.o.gObject = setup[KEY.gObject]; eye.o.gDark = setup[KEY.gDark];
+    eye.o.gMotion = setup[KEY.gMotion]; eye.o.gContrast = setup[KEY.gContrast]; eye.o.gObject = setup[KEY.gObject]; eye.o.gDark = setup[KEY.gDark]; eye.o.gBlue = setup[KEY.gBlue];
     if (eye.widthDeg !== setup[KEY.screen] || eye.w !== FRAME_W) eye.setScreen(setup[KEY.screen], FRAME_W, FRAME_H); else eye.reset();
     this.palette = -1;
     this.rand = rng(seed * 7919 + 13);
@@ -73,6 +88,10 @@ export class Game {
     this.sTurn = 0; this.sWalk = 0; this.sBack = 0;
     this.trig = new Uint8Array(4); this.spikes = 0; this.fired = 0;
     this.frame = null;
+    this.lc.load(memory);
+    this.sugarTics = 0; this.bitterTics = 0; this.lastKills = 0; this.lastTaken = 0;
+    this.wasX = new Float32Array(35); this.wasY = new Float32Array(35); this.triedAt = new Float32Array(35); this.tried = 0; this.stuckAt = -99; this.stuck = 0;
+    this.kcSum = 0; this.kcStorm = 0; this.kcEver = new Uint8Array(this.lc.kc.length);
     return this;
   }
 
@@ -100,8 +119,22 @@ export class Game {
     // 2. the brain, for one tic (57 or 58 steps of half a millisecond)
     const steps = this.tic % 7 === 6 ? 58 : 57;
     this.count.fill(0);
-    brain.drive(eye.cellIdx, rate, eye.N, steps);
+    const dRate = this.dRate;
+    dRate.set(rate);
+    dRate.fill(this.sugarTics > 0 ? LEARN.tasteHz : 0, this.tasteFrom, this.bitterFrom);
+    dRate.fill(this.bitterTics > 0 ? LEARN.tasteHz : 0, this.bitterFrom);
+    if (this.sugarTics > 0) this.sugarTics--;
+    if (this.bitterTics > 0) this.bitterTics--;
+    brain.drive(this.dIdx, dRate, this.dIdx.length, steps);
     brain.run(steps);
+    // the learning centre: which of its Kenyon cells fired (they are remembered as "active" for about a second)
+    let kcNow = 0, kcAll = 0;
+    if (this.lc.ok) {
+      kcNow = this.lc.tick(this.count, this.kcFrom);
+      for (let k = this.kcFrom, j = 0; k < this.kcOtherFrom; k++, j++) if (this.count[k]) this.kcEver[j] = 1;
+      kcAll = kcNow; for (let k = this.kcOtherFrom; k < this.kcEnd; k++) if (this.count[k]) kcAll++;
+      this.kcSum += kcNow; if (kcAll > 500) this.kcStorm++;
+    }
     // 3. its output cells -> the controller
     const hz = 1000 / (steps * brain.p.dt);
     const left = (this._n('DNa01_L') + this._n('DNa02_L')) / 2 * hz, right = (this._n('DNa01_R') + this._n('DNa02_R')) / 2 * hz;
@@ -116,7 +149,7 @@ export class Game {
     turn = Math.max(-2800, Math.min(2800, turn));                 // at most about 540 degrees per second
     const fwd = Math.max(-50, Math.min(50, Math.round(setup[KEY.walk] * this.sWalk - setup[KEY.back] * this.sBack)));
     const buttons = fire ? BT.FIRE : 0;
-    this.rates = { left, right, walk, back, jump: jump * hz / 2, fire, turn, fwd };
+    this.rates = { left, right, walk, back, jump: jump * hz / 2, fire, turn, fwd, kc: kcNow, kcAll, sugar: this.sugarTics > 0, bitter: this.bitterTics > 0 };
     this.cmds[this.tic * 3] = fwd; this.cmds[this.tic * 3 + 1] = turn; this.cmds[this.tic * 3 + 2] = buttons;
     doom.setCmd(fwd, 0, turn, buttons);
     doom.tick(1);
@@ -133,6 +166,23 @@ export class Game {
       }
       this.byOthers = others;
     }
+    // sugar for a monster the fly killed, bitter for a hit it took or for walking against a wall
+    // (only if this fly is allowed to learn)
+    if (this.learn) {
+      if (st[S.PLAYER_KILLS] > this.lastKills) {
+        this.sugarTics = LEARN.tasteTics;
+        for (let k = st[S.PLAYER_KILLS] >= task.monsters.length ? LEARN.clear : 1; k > 0; k--) this.lc.drop(1, 1);
+      }
+      if (st[S.DAMAGE_TAKEN] > this.lastTaken) { this.bitterTics = LEARN.tasteTics; this.lc.drop(2, Math.min(1, (st[S.DAMAGE_TAKEN] - this.lastTaken) / 20)); }
+      // stuck: for a second it has tried to walk and got nowhere
+      const slot = this.tic % 35, x = st[S.X] / 65536, y = st[S.Y] / 65536;
+      this.tried += Math.abs(fwd) - this.triedAt[slot]; this.triedAt[slot] = Math.abs(fwd);
+      if (this.tic >= 35 && this.tic - this.stuckAt >= 35 && this.tried / 35 >= 10 && Math.hypot(x - this.wasX[slot], y - this.wasY[slot]) < LEARN.stuckMove) {
+        this.stuckAt = this.tic; this.stuck++; this.bitterTics = LEARN.tasteTics; this.lc.drop(2, LEARN.stuck);
+      }
+      this.wasX[slot] = x; this.wasY[slot] = y;
+    }
+    this.lastKills = st[S.PLAYER_KILLS]; this.lastTaken = st[S.DAMAGE_TAKEN];
     if (st[S.DEAD]) { this.over = true; this.why = 'the fly died'; }
     else if (st[S.PLAYER_KILLS] >= task.monsters.length) { this.over = true; this.why = 'all monsters dead'; }
     else if (this.tic >= this.maxTics) { this.over = true; this.why = 'time is up'; }
@@ -150,6 +200,11 @@ export class Game {
       score, kills, perfect: kills >= task.monsters.length && !st[S.DEAD], dead: !!st[S.DEAD], why: this.why,
       tics: this.tic, health: Math.max(0, st[S.HEALTH]), shots: st[S.SHOTS], hits: st[S.HITS], dealt: st[S.DAMAGE_DEALT], taken: st[S.DAMAGE_TAKEN],
       seed: this.seed, cmds: this.cmds.slice(0, this.tic * 3),
+      // the learning centre: how many of its "visual" Kenyon cells fired on average per tic and at all, how often
+      // the whole centre fired at once, the drops given, and the fly's memory after this game (if it may learn)
+      kcPerTic: this.tic ? this.kcSum / this.tic : 0, kcEver: this.kcEver.reduce((a, b) => a + b, 0), kcStorm: this.tic ? this.kcStorm / this.tic : 0,
+      sugar: this.lc.ok ? this.lc.drops.sugar : 0, bitter: this.lc.ok ? this.lc.drops.bitter : 0, stuck: this.stuck,
+      memory: this.learn ? this.lc.memory() : null,
     };
   }
 }

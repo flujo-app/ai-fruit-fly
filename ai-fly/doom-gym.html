@@ -74,10 +74,12 @@
     Every 1/35 second the picture is spread over the facets of the fly's two eyes (about 790 per eye; a fly cannot see red). The brain is the complete FlyWire map
     (138,639 neurons, 15,091,983 connections), simulated impulse by impulse with the settings of Shiu et al. 2024. The game controller reads the fly's own output cells:
     the steering cells DNa01 and DNa02 turn, the walking cells DNg100 and DNg97 walk, the moonwalker cells back up, and the giant fibre, the neuron that makes a fly jump
-    away when something rushes at it, pulls the trigger. Every fly has the same brain and <b>it is never changed</b>. What differs is the desk: how big the screen looks, how strongly the picture
+    away when something rushes at it, pulls the trigger. Every fly has the same brain and <b>it is never changed</b> (unless you switch its learning centre on, see below). What differs is the desk: how big the screen looks, how strongly the picture
     drives the eye cells and how the ball under the fly is read. After each round the best desks' setups are copied, with small changes, over the worst.
     <b>Hand-made:</b> the first two layers of the eye (brightness changes and local motion, computed the textbook way and handed to about 25,000 real cells), which output cell presses which key, the desk setups and the scoring.
-    <b>What the model cannot do:</b> the fly's learning centre learns smells, and Doom has none. With the eye signals above, none of its 5,177 Kenyon cells responds to the screen, so sugar and bitter cannot teach these flies Doom.
+    <b>The learning centre:</b> by default it gets nothing from the screen (none of its 5,177 Kenyon cells responds), so nothing is learnt. Add <code>?learn</code> to the address to switch it on:
+    blue light on the screen then reaches a few dozen of its cells through the one eye line that is well known (the aMe12 cells), a kill earns a drop of sugar, and a hit or getting stuck a drop of bitter.
+    In our tests that worked as it does in a real fly, and it did not make the flies better at Doom (4.02 of 8 with learning, 4.28 without, 4.25 with the learning centre off), so it stays off unless you ask for it.
   </footer>
 
   <script type="module" src="js/doom/gym-main.js"></script>

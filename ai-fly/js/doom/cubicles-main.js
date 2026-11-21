@@ -4,7 +4,8 @@
 // Cubicles page (js/cubicles/); only what is on the screens and on the supervisor deck is different.
 // URL options: ?autostart, ?record, ?autopilot (the camera walks by itself), ?go (skip the start
 // screen), ?fast (a reduced brain), ?flies=, ?seconds=, ?resume, ?cam=x,z,yaw,pitch[,height],
-// ?size=1920x1080, ?testparty=N (pretend the best fly after N games won, to try the party).
+// ?size=1920x1080, ?testparty=N (pretend the best fly after N games won, to try the party),
+// ?learn (the learning centre switched on: blue light reaches it, kills earn sugar, hits bitter).
 import * as THREE from 'three';
 import { DoomRunner } from './runner.js';
 import { loadDoom, DOOM } from './engine.js';
@@ -27,7 +28,8 @@ const AUTOPILOT = P.has('autopilot');
 const FAST = P.has('fast');
 const LABS = 8, PER_LAB = 128;                       // the building has 8 teams of 128 desks
 const SECONDS = Number(P.get('seconds')) || ARENA.seconds;
-const STATE_URL = `/state/doom-office-${FAST ? 'fast' : 'full'}`;
+const LEARNING = P.has('learn') && !FAST;      // the learning centre switched on (see js/doom/learning.js)
+const STATE_URL = `/state/doom-office-${FAST ? 'fast' : LEARNING ? 'learn' : 'full'}`;
 const nf = (x) => Math.round(x).toLocaleString('en-US');
 const BUTTONS = [
   { id: 'pause', label: 'PAUSE', color: 0x9aa4b5 },
@@ -85,7 +87,7 @@ const liveDesk = new Int32Array(LABS).fill(-1);    // which desk of each lab is 
 const gameLog = [];
 let atlasDirty = true, atlasAt = 0, screenDirty = true, screenAt = 0, signsAt = 0, liveDirty = false, liveAt = 0;
 
-const runner = new DoomRunner({ labs: LABS, perLab: PER_LAB, fast: FAST, seconds: SECONDS, onFrame, onGame, onRound });
+const runner = new DoomRunner({ labs: LABS, perLab: PER_LAB, fast: FAST, learn: LEARNING, seconds: SECONDS, onFrame, onGame, onRound });
 
 function onFrame(m) {
   liveFrames[m.lab] = m;
@@ -302,7 +304,7 @@ function drawScreen() {
   // the best desk's setup, in words
   if (b) {
     const y0 = BEST.y + BEST.h + (banner ? 104 : 40);
-    g.fillStyle = '#8d96a7'; g.font = '700 22px "Segoe UI", system-ui'; g.fillText("THE BEST DESK'S SETUP (THE FLY'S BRAIN IS NEVER CHANGED)", BEST.x, y0);
+    g.fillStyle = '#8d96a7'; g.font = '700 22px "Segoe UI", system-ui'; g.fillText(LEARNING ? "THE BEST DESK'S SETUP (LEARNING CENTRE ON)" : "THE BEST DESK'S SETUP (THE FLY'S BRAIN IS NEVER CHANGED)", BEST.x, y0);
     g.font = '500 21px "Segoe UI", system-ui';
     describeSetup(b.setup).forEach((k, i) => {
       const x = BEST.x + (i % 3) * (BEST.w / 3), y = y0 + 34 + Math.floor(i / 3) * 30;
@@ -359,7 +361,7 @@ function startParty(lab, desk, r) {
 async function giveSugar() {
   const from = camera.position.clone().add(player.forward.multiplyScalar(0.5)).add(new THREE.Vector3(0, -0.25, 0));
   if (!(await party.giveSugar(from))) return;
-  hud.toast('Sugar! It sticks out its tongue and drinks. (It cannot learn Doom from it: the screen never reaches its learning centre.)', 9);
+  hud.toast(LEARNING ? 'Sugar! It sticks out its tongue and drinks. During its games it already got a drop for every monster it killed.' : 'Sugar! It sticks out its tongue and drinks. (Its learning centre is switched off here; add ?learn to the address to switch it on.)', 9);
 }
 
 async function offerContract() {

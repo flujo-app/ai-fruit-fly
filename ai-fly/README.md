@@ -221,7 +221,8 @@ ourselves:
   the impulses of its own output cells are the only thing that comes out.
 - **The brain is complete and never changed.** Every player has all 138,639 neurons and all 15,091,983
   connections of the FlyWire map, simulated impulse by impulse with the paper's settings. Nothing is
-  trimmed, re-weighted or trained. All flies have the same brain.
+  trimmed, re-weighted or trained. All flies have the same brain. (The one exception is optional and
+  off by default: with `?learn` a fly's own learning connections change the way a real fly's do.)
 
 ### In: the eyes
 
@@ -272,13 +273,15 @@ whatever startles this fly gets shot at.
 
 ### What gets better: the desk, not the fly
 
-**The flies do not learn Doom, and here is why.** A fly learns with dopamine in its learning centre
-(the mushroom body), as in the döner pages. But the learning centre is built for smells. In this
-model, with the eye signals above, **none of its 5,177 Kenyon cells responds to the screen**; even
-if every eye cell that projects to them is forced to fire 200 times a second, only 237 do. Sugar on
-the tongue makes the feeding neuron fire, but does not reach the dopamine cells through the wiring. With nothing arriving,
-there is nothing for sugar and bitter to teach. Giving the flies made-up smells or changing their
-wiring would have been cheating, so the brains stay as they are.
+**By default the flies do not learn Doom.** A fly learns with dopamine in its learning centre (the
+mushroom body), as in the döner pages. A lesson needs two things: a teacher (sugar or bitter, which
+means dopamine) and something the learning centre perceives at that moment, to attach the lesson
+to. In the döner pages that was the smell of each token. Doom has no smell, and with the eye
+signals above **none of the 5,177 Kenyon cells responds to the screen**. So by default nothing
+reaches the learning centre and nothing is learnt. Giving the flies made-up smells that tell them
+what is going on in the game, or changing their wiring, would have been cheating. The next section
+is about the one honest line from the eye into the learning centre, what happens when it is
+switched on, and why it stays off by default.
 
 What the gym tunes instead is each **desk's setup** (`js/doom/setup.js`), the same knobs a real rig has:
 how big the screen looks, how strongly the four kinds of eye signal drive their cells, how the ball
@@ -306,6 +309,69 @@ of 8 in the test game (`node tools/test_doom_fly.mjs`). About half of the flies 
 seconds are over. One run is not much: the monsters' places change every round, each fly has its
 own run of chance, and another run will find other desks.
 
+### The learning centre, switched on (`?learn`): it works, and it does not help
+
+**The line in.** Of the eye cells that reach the learning centre, one kind is well known: the 7
+aMe12 cells. They are the biggest eye input of the "visual" Kenyon cells, and they are excited by
+the pale kind of the colour photoreceptors R7/R8, which see ultraviolet and blue (Ganguly et al.
+2024, *Nature Communications*). A monitor gives no ultraviolet, so with `?learn` each aMe12 cell is
+driven by how much **blue light** the facets of "its" photoreceptor cells get. Those facets are read
+from the wiring: 16 to 55 per cell, scattered over the eye, about half of them looking at the
+screen. Hand-made: that the response is steady and grows with the light (nobody has recorded from
+these cells), its strength (a desk knob, 300 on the standard desk) and an upper limit. The other
+eye cells that reach the learning centre have never been recorded from, so they get no made-up
+signal.
+
+**What the complete brain does with it** (`node tools/doom_experiments.mjs`):
+
+- A bright screen makes 40 Kenyon cells fire, a dark one 2. With only the left half bright 17 fire,
+  with only the right half 10, and 7 of those are the same. So the learning centre can tell a bright
+  view from a dark one and left from right, with a few dozen of its cells. That is all it gets.
+- It has a say in the controller, through the real wiring. With the bright screen the left steering
+  cells DNa01 and DNa02 fire 18 and 25 times a second and the right ones 7 and 10. With all Kenyon
+  cells switched off it is the other way round (7 and 6 on the left, 12 and 16 on the right). The
+  learning centre's output cells MBON27, MBON32 and MBON35 connect directly onto steering cells
+  (DNa02, DNa03, DNg13) and onto the moonwalker cells.
+- The model's learning centre has a weak spot. Driven a little too hard, almost all of its Kenyon
+  cells (about 4,000 of the 5,177) fire at once and keep each other going. A real fly's brain
+  prevents that; this model does not. So the blue signal has to stay weak.
+
+**Sugar and bitter** (`js/doom/learning.js`). A monster killed earns a drop of sugar (three for the
+last one). A hit taken, or a second of walking against a wall, earns a drop of bitter. The drops are
+real input: the fly's taste cells fire, and with sugar its feeding neuron fires. That sugar means
+dopamine from the reward cells and bitter dopamine from the punishment cells is made by hand, as in
+the döner pages, because the taste signal does not reach the dopamine cells through the wiring of
+this model. The rule itself is the real one: the Kenyon cells that were active in the last second
+get weaker connections onto the output cells of that dopamine zone (38 output cells belong to the
+sugar zone, 58 to the bitter zone, read from the wiring). These 3,641 connections are the only thing
+in the brain that ever changes, each fly has its own, and it keeps them from game to game.
+
+**What we measured** (`node tools/doom_learning.mjs`: 12 flies, 8 games each, standard desk, the
+same monsters and the same run of chance in every row; complete brains):
+
+| | Average score out of 8 | Whole centre fires at once | Flies that died |
+|---|---|---|---|
+| Blue light off (the game as it is by default) | 4.25 ± 0.16 | never | not counted |
+| Blue 300, nothing learnt | 4.28 ± 0.15 | 2% of the time | 30% |
+| Blue 300, sugar and bitter | 4.02 ± 0.14 | 5% | 39% |
+| Blue 450, nothing learnt | 3.41 ± 0.18 | 16% | 46% |
+| Blue 450, sugar and bitter | 3.67 ± 0.16 | 8% | 34% |
+
+So: with a weak blue signal the learning centre takes part without doing harm, and learning does
+not make the flies better (4.02 against 4.28; in the second half of the games 0.5 ± 0.3 worse).
+With a stronger signal the fly plays clearly worse, because the whole centre keeps firing at once,
+and learning wins a little of that back by weakening the connections that cause the trouble. In no
+case did a fly with a learning centre beat the game as it is by default. In a game about a dozen
+Kenyon cells take part, a fly gets about 4 drops of sugar and 13 of bitter, and being stuck was rare
+(0.2 drops a game). The two rows with blue 450 were played before the drops for the last monster and
+for being stuck were added.
+
+Why it does not help, as far as we can tell: all the learning centre knows about the screen is how
+much blue light there is on the left and on the right, and that says little about where a monster
+is. And every lesson can only weaken a connection. So the learning centre stays **off by default**,
+and `?learn` switches it on for anyone who wants to watch it (the desk's blue knob is then tuned
+between rounds like the others, and the page shows how many learning cells are active and each drop).
+
 ### Speed, and the faster brain engine
 
 One complete brain keeps one processor core busy, so as many flies play at the same moment as the
@@ -327,20 +393,23 @@ current round will still take.
 
 Options: `?flies=64` (fewer desks, so a round is shorter), `?labs=4` (fewer brains at once),
 `?seconds=20` (shorter games), `?autostart`, `?resume` (continue the run that is saved to the local
-server every 16 games), and **`?fast`**: a reduced brain of 30,658 neurons (the cells between the
+server every 16 games), `?learn` (the learning centre switched on, see above), and **`?fast`**: a reduced brain of 30,658 neurons (the cells between the
 eyes and the output cells, and all connections between them). It is quicker and it is not the real
 thing; the page says so in amber. The default is always the complete brain.
 
 With `python serve.py` the 8 workers share one copy of the 61 MB wiring; on another server each
 keeps its own copy (about 500 MB in total).
 
-`node tools/play_doom.mjs`, `node tools/train_doom.mjs` and `node tools/test_doom_fly.mjs` run games,
-whole rounds and the checks without a page.
+`node tools/play_doom.mjs`, `node tools/train_doom.mjs`, `node tools/doom_learning.mjs` and
+`node tools/test_doom_fly.mjs` run games, whole rounds, the learning comparison and the checks
+without a page.
 
 **Hand-made:** the first two layers of the eye, where the eye looks (how many degrees the eye map
 covers), which output cell is which game input, the desk setups, the arena, its monsters and the
-scoring. **Real:** the game, every neuron and connection behind the 24,991 eye cells, and every
-impulse that turns the picture into a movement.
+scoring; and with `?learn` the blue-light signal of the aMe12 cells, what earns sugar or bitter, and
+that sugar and bitter mean dopamine. **Real:** the game, every neuron and connection behind the
+24,991 eye cells, every impulse that turns the picture into a movement, and the rule by which the
+learning centre's connections change.
 
 ## Doom Cubicles (doom-cubicles.html): the Doom Gym as an office
 
@@ -353,12 +422,12 @@ The same games in the office of the Cubicles page: 1,024 desks in 8 teams, one t
   game so far, every desk's latest game, the progress and the best desk's setup. The console has
   PAUSE, PLAY, NEW DESKS (press twice) and REC.
 - **The first fly that kills all 8 monsters** gets the party: a light beam, confetti and a path on
-  the floor. Its screen replays the winning game. Press **1** for a sugar cube (it drinks; it cannot
-  learn Doom from it) or **2** for a management contract: it flies to the management office and its
+  the floor. Its screen replays the winning game. Press **1** for a sugar cube (it drinks; whether it
+  learns anything depends on `?learn`) or **2** for a management contract: it flies to the management office and its
   desk setup is copied to the 8 weakest desks of every team.
 - **3** shows the best game so far filling the view.
 - **Options:** `?autostart`, `?record`, `?autopilot` (the camera walks by itself, for a demo video),
-  `?fast`, `?seconds=`, `?resume`, `?cam=x,z,yaw,pitch,height`, `?size=1920x1080`, `?testparty=12`
+  `?fast`, `?learn`, `?seconds=`, `?resume`, `?cam=x,z,yaw,pitch,height`, `?size=1920x1080`, `?testparty=12`
   (pretend the best fly after 12 games won, to try the party).
 
 ## What's real and what's hand-made
@@ -413,7 +482,8 @@ result: about 400 neurons become active and the feeding neuron MN9 fires.
 - `tools/train_gym.mjs`: headless Fly Gym training, for experiments
 - `doom-gym.html`, `doom-cubicles.html`, `css/doom.css`, `js/doom/`: the Doom pages: the Doom engine's
   wrapper (`engine.js`), the eyes (`eye.js`), one fly playing one game (`game.js`), the desk setups
-  and what happens to them after a round (`setup.js`, `evolve.js`), one lab per worker
+  and what happens to them after a round (`setup.js`, `evolve.js`), the learning centre with sugar
+  and bitter (`learning.js`, off unless `?learn`), one lab per worker
   (`doom-worker.js`), the rounds (`runner.js`), loading (`load.js`), drawing helpers (`views.js`)
   and the two pages (`gym-main.js`, `cubicles-main.js`)
 - `js/brain-fast.js`: the whole-brain model again, computed with less wasted work (used by the Doom pages)
@@ -421,7 +491,9 @@ result: about 400 neurons become active and the feeding neuron MN9 fires.
   `data/doom/flygym.wad` are built from it and from Freedoom (`tools/build_doom_wad.mjs`)
 - `data/doom/rig.bin`, `rig.json`, `circuit.bin`: where every eye cell looks, the output cells, and the
   reduced brain for `?fast` (`tools/pack_doom_rig.py`)
-- `tools/play_doom.mjs`, `tools/train_doom.mjs`: flies play Doom without a page; `tools/test_doom_engine.mjs`,
+- `tools/play_doom.mjs`, `tools/train_doom.mjs`, `tools/doom_learning.mjs`, `tools/doom_experiments.mjs`:
+  flies play Doom without a page, the learning comparison, and the brain in front of simple
+  pictures; `tools/test_doom_engine.mjs`,
   `tools/test_brain_fast.mjs`, `tools/test_doom_fly.mjs`: the checks
 
 To rebuild `data/`, put these files in `../raw_data`:
