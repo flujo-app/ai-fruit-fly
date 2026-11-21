@@ -169,6 +169,11 @@ function updateStats() {
   $('st-mean').textContent = recent.length ? (recent.reduce((a, b) => a + b, 0) / recent.length).toFixed(2) : '–';
   $('st-solved').textContent = nf(runner.perfect);
   $('st-speed').textContent = runner.speed ? `${runner.speed.toFixed(2)}× real time` : '–';
+  // how long this round will still take: a complete brain is slow, and the desks take turns
+  if (runner.games && runner.speed && !runner.firstPerfect) {
+    const left = (runner.desks - played) * (runner.gameSeconds / runner.games) / (LABS * runner.speed) / 60;
+    $('milestone').textContent = left >= 1 ? `this round: about ${left >= 90 ? (left / 60).toFixed(1) + ' hours' : Math.round(left) + ' minutes'} left` : '';
+  }
   const i = runner.impulses;
   $('st-impulses').textContent = i >= 1e9 ? `${(i / 1e9).toFixed(2)} bn` : i >= 1e6 ? `${(i / 1e6).toFixed(1)} M` : nf(i);
 }
