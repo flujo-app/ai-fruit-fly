@@ -11,3 +11,6 @@ node_modules/
 # saved Fly Gym training runs (local only)
 ai-fly/.state/
 ai-fly/recordings/
+
+# pictures and numbers written by the tools
+ai-fly/tools/.out/
