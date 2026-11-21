@@ -208,6 +208,159 @@ first perfect döner came in round 131, and the video ends with the winner's dö
   it. The file can't be scrubbed until it's repacked (`ffmpeg -i in.webm -c copy out.webm`) or
   converted to MP4.
 
+## Doom Gym (doom-gym.html): the complete brain plays Doom
+
+Open <http://127.0.0.1:8765/doom-gym.html> and press **Start**. Fruit flies play Doom. The rules we set
+ourselves:
+
+- **It is real Doom.** The game is the open-source Doom engine (doomgeneric, built for the browser
+  without a screen or a clock, see `doom-engine/`) with the free Freedoom game data. The task is a
+  round room: the fly has a shotgun and 200 health, and 8 monsters come for it within 30 seconds
+  (3 zombies, a shotgun zombie, 3 imps and a demon, on Doom's normal difficulty "Hurt me plenty").
+- **The fly only gets the screen.** No positions, no health, no score. The picture goes into its eyes;
+  the impulses of its own output cells are the only thing that comes out.
+- **The brain is complete and never changed.** Every player has all 138,639 neurons and all 15,091,983
+  connections of the FlyWire map, simulated impulse by impulse with the paper's settings. Nothing is
+  trimmed, re-weighted or trained. All flies have the same brain.
+
+### In: the eyes
+
+About 70% of a fly's brain is for seeing (97,000 of the 138,639 neurons), and until now the pages
+used almost none of it.
+
+- **Where each cell looks** is read from the wiring (`tools/pack_doom_rig.py`). Behind each of the
+  about 790 facets of an eye sits one column of cells. The Mi1 cells (one per column) lie on a curved
+  sheet like the eye itself; which way is front and which way is up on that sheet comes from the
+  motion cells: a T4a cell, known to prefer front-to-back motion, gets its Mi9 input from the side
+  the motion comes from and its Mi4 input from the side it goes to. The four kinds of T4 cells come out
+  at 0°, 180°, 101° and -102° on the left eye (expected: 0°, 180°, 90°, -90°). Every other eye cell
+  is placed by the columns it is wired to.
+- **The screen** stands in front of the fly and fills the middle of its view (120° wide by default).
+  About 600 facets look at it, so to the fly Doom is a picture of about 600 points. Flies cannot see
+  red: brightness is 5% red, 55% green and 40% blue.
+- **Hand-made: the first two layers behind the facets.** The lamina and medulla work with smoothly
+  varying voltages, not impulses, and the transmitter of the light-sensing cells (histamine) is not
+  in the map's transmitter predictions, so the impulse model cannot do this part. Their well-known
+  results are computed the textbook way (`js/doom/eye.js`) and handed to the cells known to carry
+  them: brightening (Tm3), darkening (Tm1, Tm2, Tm4), dark areas (Tm9), small changing spots
+  (T2, T2a, T3) and local motion in four directions, computed with the classic
+  Hassenstein-Reichardt detector (T4a-d for bright edges, T5a-d for dark edges). That is 24,991 real
+  cells, each with its own spot on the screen.
+- **From there on it is the real wiring**, and it does what a real fly's does
+  (`node tools/doom_experiments.mjs` shows the complete brain simple pictures through the same eyes).
+  When the world turns to the right, the right eye's HS cells fire at 74 to 222 impulses per second
+  and the left eye's stay silent, and the H2 cells do the opposite (left 212, right 0): exactly the
+  direction preferences recorded in real flies. A dark disc growing on the left makes the giant fibre
+  (the jump neuron) fire on both sides, the looming cells' targets DNp02 and DNp04 fire on the left
+  only, and the steering cells turn the fly to the right, away from it. The model is rough in
+  places: a shrinking disc startles it almost as much as a growing one.
+
+### Out: the controller
+
+A real fly-lab rig has the fly walk on a floating ball in front of a screen; the ball works like a
+trackball. Here the "ball" is read from the fly's own output cells:
+
+| Game input | Output cells | What they do in a real fly |
+|---|---|---|
+| turn | DNa01 and DNa02, left minus right | steering while walking |
+| walk forward | DNg100 and DNg97 | drive forward walking |
+| back up | MDN, the "moonwalker" cells | walking backwards |
+| pull the trigger | DNp01, the giant fibre | the jump that starts an escape |
+
+Which cell stands for which input is hand-made. So is the fact that the jump neuron is the trigger:
+whatever startles this fly gets shot at.
+
+### What gets better: the desk, not the fly
+
+**The flies do not learn Doom, and here is why.** A fly learns with dopamine in its learning centre
+(the mushroom body), as in the döner pages. But the learning centre is built for smells. In this
+model, with the eye signals above, **none of its 5,177 Kenyon cells responds to the screen**; even
+if every eye cell that projects to them is forced to fire 200 times a second, only 237 do. Sugar on
+the tongue makes the feeding neuron fire, but does not reach the dopamine cells through the wiring. With nothing arriving,
+there is nothing for sugar and bitter to teach. Giving the flies made-up smells or changing their
+wiring would have been cheating, so the brains stay as they are.
+
+What the gym tunes instead is each **desk's setup** (`js/doom/setup.js`), the same knobs a real rig has:
+how big the screen looks, how strongly the four kinds of eye signal drive their cells, how the ball
+is read (turning, a trim for a constant pull to one side, walking, backing up) and how many jump
+impulses pull the trigger. Turning can be negative: the ball read the other way round, a classic
+experiment in fly research. Every desk in a round faces the same monsters at the same places. After
+each round, in each lab, the best desks' setups are copied with small random changes over the worst,
+and each lab passes its best setup on to the next lab.
+
+**What we measured** (`node tools/train_doom.mjs flies=64 rounds=3 threads=7 seconds=30`: complete
+brains, 64 desks in 8 labs; round 1 is 56 random setups and 8 standard ones):
+
+| Round | Average score | Middle desk | Best desk | Perfect games |
+|---|---|---|---|---|
+| 1 | 1.85 of 8 | 1.00 | 7.00 | 0 |
+| 2 | 3.31 | 3.74 | 7.17 | 0 |
+| 3 | 3.96 | 3.51 | **8.00** | 1 |
+
+So the same unchanged brain goes from killing two of the eight monsters to killing all eight,
+depending only on how its desk is set up. The first perfect game came in round 3, at a desk with a
+125° screen, a weak motion signal, strong flicker and small-object signals, fast turning and
+walking, and a trigger that needs 14 jump impulses within a tenth of a second: a fly that keeps
+moving and only shoots when something really startles it. With the standard setup the fly killed 5
+of 8 in the test game (`node tools/test_doom_fly.mjs`). About half of the flies die before the 30
+seconds are over. One run is not much: the monsters' places change every round, each fly has its
+own run of chance, and another run will find other desks.
+
+### Speed, and the faster brain engine
+
+One complete brain keeps one processor core busy, so as many flies play at the same moment as the
+computer has cores (8 here), and the 1,024 desks take turns. The page shows the running games, every
+desk's latest game, a replay of the best game (the same Doom engine, fed the fly's recorded input),
+and for one fly what its eyes get, its brain and its output cells.
+
+`js/brain-fast.js` computes exactly the same model as `js/brain-engine.js` with less wasted work:
+a neuron far below threshold cannot fire until new input arrives, so it is left alone and brought up
+to date with the exact formula when the next impulse reaches it. `node tools/test_brain_fast.mjs`
+compares it with a deliberately simple reference that updates every neuron at every step: on the
+learning centre's 5,554 neurons both fire the same 6,321 impulses, neuron for neuron. On the whole
+brain it gives the same firing rates as the old engine (sugar taste: feeding neuron MN9 79 against
+83 impulses per second) and was 5 to 7 times faster in those tests. In a game, one brain ran at
+about twice real time on a free core with the standard setup, and at 0.4 to 0.65 times real time
+when 7 brains ran at once on an 8-core PC that was busy with other work. There a round of 64 desks
+took 7 to 12 minutes, so a round of all 1,024 desks takes a few hours. The page shows how long the
+current round will still take.
+
+Options: `?flies=64` (fewer desks, so a round is shorter), `?labs=4` (fewer brains at once),
+`?seconds=20` (shorter games), `?autostart`, `?resume` (continue the run that is saved to the local
+server every 16 games), and **`?fast`**: a reduced brain of 30,658 neurons (the cells between the
+eyes and the output cells, and all connections between them). It is quicker and it is not the real
+thing; the page says so in amber. The default is always the complete brain.
+
+With `python serve.py` the 8 workers share one copy of the 61 MB wiring; on another server each
+keeps its own copy (about 500 MB in total).
+
+`node tools/play_doom.mjs`, `node tools/train_doom.mjs` and `node tools/test_doom_fly.mjs` run games,
+whole rounds and the checks without a page.
+
+**Hand-made:** the first two layers of the eye, where the eye looks (how many degrees the eye map
+covers), which output cell is which game input, the desk setups, the arena, its monsters and the
+scoring. **Real:** the game, every neuron and connection behind the 24,991 eye cells, and every
+impulse that turns the picture into a movement.
+
+## Doom Cubicles (doom-cubicles.html): the Doom Gym as an office
+
+The same games in the office of the Cubicles page: 1,024 desks in 8 teams, one team per lab.
+
+- **Screens:** far away, every monitor shows the last picture of its desk's latest game, with a bar
+  for the score. A blue marker floats over each desk that is playing right now; up close, its fly
+  taps the keys and the screen shows the game live. Flies that wait for their turn clean themselves.
+- **The supervisor deck:** the wall screen shows the games that are running, a replay of the best
+  game so far, every desk's latest game, the progress and the best desk's setup. The console has
+  PAUSE, PLAY, NEW DESKS (press twice) and REC.
+- **The first fly that kills all 8 monsters** gets the party: a light beam, confetti and a path on
+  the floor. Its screen replays the winning game. Press **1** for a sugar cube (it drinks; it cannot
+  learn Doom from it) or **2** for a management contract: it flies to the management office and its
+  desk setup is copied to the 8 weakest desks of every team.
+- **3** shows the best game so far filling the view.
+- **Options:** `?autostart`, `?record`, `?autopilot` (the camera walks by itself, for a demo video),
+  `?fast`, `?seconds=`, `?resume`, `?cam=x,z,yaw,pitch,height`, `?size=1920x1080`, `?testparty=12`
+  (pretend the best fly after 12 games won, to try the party).
+
 ## What's real and what's hand-made
 
 **Real:** the wiring, the brain model (Shiu et al., *Nature* 2024, with the paper's settings),
@@ -258,6 +411,18 @@ result: about 400 neurons become active and the feeding neuron MN9 fires.
   and `main.js`
 - `data/gym.bin`, `data/gym.json`: precomputed smell fingerprints (`tools/make_fingerprints.mjs`)
 - `tools/train_gym.mjs`: headless Fly Gym training, for experiments
+- `doom-gym.html`, `doom-cubicles.html`, `css/doom.css`, `js/doom/`: the Doom pages: the Doom engine's
+  wrapper (`engine.js`), the eyes (`eye.js`), one fly playing one game (`game.js`), the desk setups
+  and what happens to them after a round (`setup.js`, `evolve.js`), one lab per worker
+  (`doom-worker.js`), the rounds (`runner.js`), loading (`load.js`), drawing helpers (`views.js`)
+  and the two pages (`gym-main.js`, `cubicles-main.js`)
+- `js/brain-fast.js`: the whole-brain model again, computed with less wasted work (used by the Doom pages)
+- `doom-engine/`: the Doom engine's source, licence and build script; `data/doom/doom.wasm` and
+  `data/doom/flygym.wad` are built from it and from Freedoom (`tools/build_doom_wad.mjs`)
+- `data/doom/rig.bin`, `rig.json`, `circuit.bin`: where every eye cell looks, the output cells, and the
+  reduced brain for `?fast` (`tools/pack_doom_rig.py`)
+- `tools/play_doom.mjs`, `tools/train_doom.mjs`: flies play Doom without a page; `tools/test_doom_engine.mjs`,
+  `tools/test_brain_fast.mjs`, `tools/test_doom_fly.mjs`: the checks
 
 To rebuild `data/`, put these files in `../raw_data`:
 
@@ -271,6 +436,7 @@ Then run:
 
 ```bash
 uv run --with pandas --with pyarrow --with numpy python tools/pack_brain.py
+uv run --with pandas --with pyarrow --with numpy --with scipy python tools/pack_doom_rig.py   # the Doom pages' eye map
 ```
 
 ## Credits and licences
@@ -280,3 +446,8 @@ uv run --with pandas --with pyarrow --with numpy python tools/pack_brain.py
 - Brain model and data packaging: Shiu et al. 2024, MIT licence.
 - 3D engine: three.js, MIT licence.
 - Video files in Cubicles: webm-muxer by Vanilagy, MIT licence.
+- Doom engine: [doomgeneric](https://github.com/ozkl/doomgeneric) by ozkl, based on Chocolate Doom and
+  id Software's Doom source, **GPL-2.0** (`doom-engine/LICENSE`; the source of the shipped
+  `doom.wasm` is in `doom-engine/src/`).
+- Game data: [Freedoom](https://freedoom.github.io/) 0.13.0, © the Freedoom contributors, BSD-style
+  licence (`data/doom/FREEDOOM-COPYING.txt`, `FREEDOOM-CREDITS.txt`).
