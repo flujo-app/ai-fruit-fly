@@ -1,2 +1,5 @@
 *.bin binary
 *.parquet binary
+*.wasm binary
+*.wad binary
+*.sh text eol=lf
