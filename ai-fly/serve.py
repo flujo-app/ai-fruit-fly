@@ -3,6 +3,7 @@
 Besides the files, the server keeps two things:
 - a saved Fly Gym training state (POST /state/<name>, GET /state/<name>) in the .state folder, so a
   long training run can be continued after a page reload;
+- a saved Doom Gym run in the same way (/state/doom-...);
 - videos recorded by the Cubicles page (POST /recording/<name>?part=N appends one piece,
   ?done=1 finishes it) in the recordings folder.
 It only listens on 127.0.0.1.
@@ -30,6 +31,12 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def end_headers(self):
         self.send_header("Cache-Control", "no-cache")
+        # The Doom pages run one complete brain per CPU core. With these two headers the browser lets
+        # the workers share one copy of the 61 MB wiring instead of each keeping its own.
+        path = urllib.parse.urlparse(self.path).path
+        if re.fullmatch(r"/doom-[\w-]+\.html|/js/doom/doom-worker\.js", path):
+            self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+            self.send_header("Cross-Origin-Embedder-Policy", "require-corp")
         super().end_headers()
 
     def _state_file(self):
@@ -97,4 +104,8 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
 
 print(f"AI fruit fly running at http://127.0.0.1:{PORT}", flush=True)
-http.server.ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+class Server(http.server.ThreadingHTTPServer):
+    request_queue_size = 128   # the Doom pages start 8 workers that all ask for their files at once
+
+
+Server(("127.0.0.1", PORT), Handler).serve_forever()
